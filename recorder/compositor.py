@@ -16,12 +16,15 @@ from pathlib import Path
 from typing import List, Optional
 
 from recorder.devices import find_ffmpeg
+from recorder.encoding import video_encoder_args
 
 # Default picture-in-picture layout.
 DEFAULT_PIP_WIDTH = 320
 DEFAULT_PIP_MARGIN = 20
 
 VIDEO_BITRATE = "8M"
+# Keyframe interval in frames (about 2 seconds at 30 fps).
+VIDEO_GOP = 60
 AUDIO_BITRATE = "192k"
 
 # Compositing re-encodes the whole recording, so allow plenty of time.
@@ -109,7 +112,7 @@ def build_composite_command(
     if audio_label is not None:
         cmd += ["-map", audio_label, "-c:a", "aac", "-b:a", AUDIO_BITRATE]
     cmd += [
-        "-c:v", "h264_videotoolbox", "-b:v", VIDEO_BITRATE,
+        *video_encoder_args(ffmpeg, VIDEO_BITRATE, VIDEO_GOP),
         "-pix_fmt", "yuv420p",
         # Stop at the shortest stream so the mix never runs past the video.
         "-shortest",

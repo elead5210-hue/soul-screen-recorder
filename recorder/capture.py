@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import IO, List, Optional
 
 from recorder.devices import SelectedDevices, find_ffmpeg
+from recorder.encoding import video_encoder_args
 
 # How long to wait for ffmpeg to finalize a file after we send "q".
 STOP_TIMEOUT_SECONDS = 20
@@ -118,8 +119,7 @@ def build_camera_command(
         "-f", "avfoundation",
         "-framerate", str(FRAMERATE),
         "-i", f"{devices.camera.index}:{devices.microphone.index}",
-        "-c:v", "h264_videotoolbox", "-b:v", "4M",
-        "-g", str(FRAMERATE * FRAGMENT_SECONDS),
+        *video_encoder_args(ffmpeg, "4M", FRAMERATE * FRAGMENT_SECONDS),
         "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-b:a", "160k",
         "-movflags", MOVFLAGS,
@@ -137,8 +137,7 @@ def build_screen_command(
         "-capture_cursor", "1",
         "-framerate", str(FRAMERATE),
         "-i", f"{devices.screen.index}:{devices.system_audio.index}",
-        "-c:v", "h264_videotoolbox", "-b:v", "8M",
-        "-g", str(FRAMERATE * FRAGMENT_SECONDS),
+        *video_encoder_args(ffmpeg, "8M", FRAMERATE * FRAGMENT_SECONDS),
         "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-b:a", "160k",
         "-movflags", MOVFLAGS,

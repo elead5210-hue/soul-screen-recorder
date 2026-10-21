@@ -42,9 +42,20 @@ The app records with plain `ffmpeg` using its `avfoundation` input, launched fro
   | Presenter | webcam + microphone | `camera.mp4` |
   | Screen | screen (with cursor) + BlackHole 2ch system audio | `screen.mp4` |
 
-  Both record at 30 fps, encode video with `h264_videotoolbox` (hardware encoding) and audio with AAC.
+  Both record at 30 fps, encode video with `h264_videotoolbox` (hardware encoding, see Low CPU use) and audio with AAC.
 - **Control.** ffmpeg runs in the background with its standard input connected to the app. To stop, the app writes `q` to that input (see Reliable file output).
 - **Log output.** ffmpeg's own log output is not shown in the terminal. It is collected in a temporary file for each process and discarded when the capture ends. If a capture fails to start or to stop cleanly, the last part of that log is included in the **Error** message under the status.
+
+## Low CPU use
+
+Recording two streams at once, and combining them afterwards, stays light on the CPU because the video is encoded by the Mac's hardware encoder instead of by the CPU:
+
+- **Capture.** Both live captures (`camera.mp4` and `screen.mp4`) use `h264_videotoolbox`.
+- **Compositing.** The `final.mp4` encode uses the same hardware encoder, so combining a long recording does not max out the CPU either.
+- **One place chooses the encoder.** `recorder/encoding.py` checks once per ffmpeg binary (with `ffmpeg -encoders`) that `h264_videotoolbox` is available, and both capture and compositing take their video encoder arguments from it.
+- **Fallback.** Some ffmpeg builds that are not from Homebrew are built without VideoToolbox. In that case the app automatically uses the software encoder `libx264` with the `veryfast` preset, so recording still works, just with higher CPU use. If the check itself cannot run, the app assumes hardware encoding, which is what the standard Homebrew ffmpeg provides.
+
+To check CPU use, open **Activity Monitor** (Applications > Utilities), select the **CPU** tab, and watch the two `ffmpeg` processes while recording. With hardware encoding they should each use only a small share of one core. If they use much more, run `ffmpeg -hide_banner -encoders | grep videotoolbox`: if nothing is listed, your ffmpeg has no VideoToolbox support, so reinstall it with `brew install ffmpeg`.
 
 ## Set up system audio (Multi-Output Device)
 
@@ -185,6 +196,7 @@ recorder/
   state.py               Recording states and their label/color/button styles
   controller.py          Record/Stop state machine; notifies the UI of changes
   devices.py             Finds the camera, microphone, screen and BlackHole devices
+  encoding.py            Chooses the video encoder: h264_videotoolbox hardware encoding, or libx264 if unavailable
   audio_output.py        Detects the current sound output (Multi-Output Device, BlackHole only, or plain output)
   capture.py             Starts and stops the two ffmpeg captures; writes fragmented MP4s and verifies them after stop
   session.py             Creates the timestamped session folder
@@ -205,4 +217,5 @@ requirements.txt         Dependencies (none required yet)
 - The controller notifies the window of every state change, and the window updates the indicator and button accordingly.
 - On Record, `_start_capture` first checks the sound output (see Sound output check), then detects the devices, creates the session folder and launches the camera and screen ffmpeg processes back to back (see How capture works). On Stop, `_stop_capture` asks both to finish so the MP4 files are finalized cleanly, and then checks that each file can be opened before processing continues.
 - Any device, session or capture failure is shown as the **Error** status with a detail message.
+- Both the captures and the final composite get their video encoder arguments from `recorder/encoding.py`, which prefers hardware encoding and falls back to `libx264` (see Low CPU use).
 - After Stop, `_process` runs in the background thread and calls `compositor.composite()`, which runs ffmpeg with an overlay filter (presenter scaled to about 320 px, 20 px from the bottom-right corner) and mixes the microphone from `camera.mp4` with the system audio from `screen.mp4`. The raw files are never modified.

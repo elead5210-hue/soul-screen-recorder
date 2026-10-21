@@ -154,13 +154,13 @@
       "feature_id": null,
       "title": "System audio capture",
       "summary": "Capture system audio through the BlackHole 2ch virtual driver with a Multi-Output Device so the user can still hear audio. Optionally evaluate ScreenCaptureKit as a driver-free alternative.",
-      "detail": "{\"planState\":\"tasks_created\",\"planPromptText\":\"Goal: System audio capture\\nDescription: Capture system audio through the BlackHole 2ch virtual driver with a Multi-Output Device so the user can still hear audio. Optionally evaluate ScreenCaptureKit as a driver-free alternative.\\n\\nBelow is the current file tree for this project: one path per line,\\nfollowed by a short content fingerprint (format:\\nL<byte length>:H<8-char hash> - see shared/fingerprint.js if you’ve\\nseen this project before). No file contents are included here.\\n\\nPlan the set of file changes needed to implement the goal above.\\nRespond with ONLY this JSON object, no other text before or after it:\\n{\\n  \\\"tasks\\\": [\\n    {\\n      \\\"path\\\": \\\"components/example/example.js\\\",\\n      \\\"action\\\": \\\"create\\\" | \\\"modify\\\" | \\\"delete\\\",\\n      \\\"description\\\": \\\"one-line description of the change\\\",\\n      \\\"needsFileContent\\\": true,\\n      \\\"needsMetadata\\\": false,\\n      \\\"confident\\\": true\\n    }\\n  ]\\n}\\n\\n- needsFileContent: true unless this task is a plain delete with\\n  nothing else to write.\\n- needsMetadata: true only if this task needs you to author extra\\n  structured data beyond the file’s content (leave false if unsure).\\n- confident: for \\\"modify\\\"/\\\"delete\\\" tasks, whether your memory of\\n  that file’s current content matches the fingerprint shown above.\\n  Always true for \\\"create\\\" tasks (there’s nothing to remember yet).\\n\\nCurrent file tree:\\n.gitignore  L179:H6ae6e29c\\nmain.py  L448:H573b4f86\\nREADME.md  L12080:Hab412fbc\\nrecorder/__init__.py  L71:Hf8924643\\nrecorder/capture.py  L9393:H25426c1f\\nrecorder/compositor.py  L6617:H8527977c\\nrecorder/controller.py  L7267:H9519798c\\nrecorder/devices.py  L5402:H6fa043c8\\nrecorder/recomposite.py  L3363:H9b3bc8b2\\nrecorder/session.py  L2468:H663a985c\\nrecorder/state.py  L1560:Hdee2c515\\nrequirements.txt  L680:H230461f9\\nui/__init__.py  L91:He423e5c3\\nui/main_window.py  L4756:H1e71083c\"}",
+      "detail": "{\"planState\":\"tasks_created\",\"planPromptText\":\"Goal: System audio capture\\nDescription: Capture system audio through the BlackHole 2ch virtual driver with a Multi-Output Device so the user can still hear audio. Optionally evaluate ScreenCaptureKit as a driver-free alternative.\\n\\nBelow is the current file tree for this project: one path per line,\\nfollowed by a short content fingerprint (format:\\nL<byte length>:H<8-char hash> - see shared/fingerprint.js if you’ve\\nseen this project before). No file contents are included here.\\n\\nPlan the set of file changes needed to implement the goal above.\\nRespond with ONLY this JSON object, no other text before or after it:\\n{\\n  \\\"tasks\\\": [\\n    {\\n      \\\"path\\\": \\\"components/example/example.js\\\",\\n      \\\"action\\\": \\\"create\\\" | \\\"modify\\\" | \\\"delete\\\",\\n      \\\"description\\\": \\\"one-line description of the change\\\",\\n      \\\"needsFileContent\\\": true,\\n      \\\"needsMetadata\\\": false,\\n      \\\"confident\\\": true\\n    }\\n  ]\\n}\\n\\n- needsFileContent: true unless this task is a plain delete with\\n  nothing else to write.\\n- needsMetadata: true only if this task needs you to author extra\\n  structured data beyond the file’s content (leave false if unsure).\\n- confident: for \\\"modify\\\"/\\\"delete\\\" tasks, whether your memory of\\n  that file’s current content matches the fingerprint shown above.\\n  Always true for \\\"create\\\" tasks (there’s nothing to remember yet).\\n\\nCurrent file tree:\\n.gitignore  L179:H6ae6e29c\\nmain.py  L448:H573b4f86\\nREADME.md  L12080:Hab412fbc\\nrecorder/__init__.py  L71:Hf8924643\\nrecorder/capture.py  L9393:H25426c1f\\nrecorder/compositor.py  L6617:H8527977c\\nrecorder/controller.py  L7267:H9519798c\\nrecorder/devices.py  L5402:H6fa043c8\\nrecorder/recomposite.py  L3363:H9b3bc8b2\\nrecorder/session.py  L2468:H663a985c\\nrecorder/state.py  L1560:Hdee2c515\\nrequirements.txt  L680:H230461f9\\nui/__init__.py  L91:He423e5c3\\nui/main_window.py  L4756:H1e71083c\",\"pushOutcome\":{\"status\":\"pushed\",\"sha\":\"6a2a879a77f984c457e52be950754c6b3cd9bea8\",\"at\":\"2026-10-21T13:54:50.352Z\"}}",
       "linked_element_ids": [],
       "finalized": false,
       "blocked_by": [],
       "notes": "",
       "createdAt": "2026-10-21T12:40:08.600Z",
-      "updatedAt": "2026-10-21T13:51:24.605Z"
+      "updatedAt": "2026-10-21T13:54:50.375Z"
     },
     {
       "roadmap_node_id": "rmn_2bcdb7f1c3723c03c156207c",
@@ -174,13 +174,13 @@
       "feature_id": null,
       "title": "Low-CPU performance",
       "summary": "Use hardware encoding (h264_videotoolbox) to keep CPU usage low during dual capture.",
-      "detail": "",
+      "detail": "{\"planState\":\"tasks_created\",\"planPromptText\":\"Goal: Low-CPU performance\\nDescription: Use hardware encoding (h264_videotoolbox) to keep CPU usage low during dual capture.\\n\\nBelow is the current file tree for this project: one path per line,\\nfollowed by a short content fingerprint (format:\\nL<byte length>:H<8-char hash> - see shared/fingerprint.js if you’ve\\nseen this project before). No file contents are included here.\\n\\nPlan the set of file changes needed to implement the goal above.\\nRespond with ONLY this JSON object, no other text before or after it:\\n{\\n  \\\"tasks\\\": [\\n    {\\n      \\\"path\\\": \\\"components/example/example.js\\\",\\n      \\\"action\\\": \\\"create\\\" | \\\"modify\\\" | \\\"delete\\\",\\n      \\\"description\\\": \\\"one-line description of the change\\\",\\n      \\\"needsFileContent\\\": true,\\n      \\\"needsMetadata\\\": false,\\n      \\\"confident\\\": true\\n    }\\n  ]\\n}\\n\\n- needsFileContent: true unless this task is a plain delete with\\n  nothing else to write.\\n- needsMetadata: true only if this task needs you to author extra\\n  structured data beyond the file’s content (leave false if unsure).\\n- confident: for \\\"modify\\\"/\\\"delete\\\" tasks, whether your memory of\\n  that file’s current content matches the fingerprint shown above.\\n  Always true for \\\"create\\\" tasks (there’s nothing to remember yet).\\n\\nCurrent file tree:\\n.gitignore  L179:H6ae6e29c\\ndocs/screencapturekit-evaluation.md  L5592:H7bac335c\\nmain.py  L448:H573b4f86\\nREADME.md  L14646:H0c7223d8\\nrecorder/__init__.py  L71:Hf8924643\\nrecorder/audio_output.py  L4060:H4939c609\\nrecorder/capture.py  L9393:H25426c1f\\nrecorder/compositor.py  L6617:H8527977c\\nrecorder/controller.py  L8654:H49601c43\\nrecorder/devices.py  L5402:H6fa043c8\\nrecorder/recomposite.py  L3363:H9b3bc8b2\\nrecorder/session.py  L2468:H663a985c\\nrecorder/state.py  L1560:Hdee2c515\\nrequirements.txt  L680:H230461f9\\nui/__init__.py  L91:He423e5c3\\nui/main_window.py  L4756:H1e71083c\"}",
       "linked_element_ids": [],
       "finalized": false,
       "blocked_by": [],
       "notes": "",
       "createdAt": "2026-10-21T12:40:08.600Z",
-      "updatedAt": "2026-10-21T12:40:08.600Z"
+      "updatedAt": "2026-10-21T13:55:49.074Z"
     },
     {
       "roadmap_node_id": "rmn_f8c9274835ca707b84eb7075",
@@ -583,6 +583,26 @@
       "updatedAt": "2026-10-21T13:52:09.402Z"
     },
     {
+      "roadmap_node_id": "rmn_0501cb771270cae3f3e910b4",
+      "project_id": "9b3183b2-bfd9-4cad-abef-05891f52b874",
+      "parent_roadmap_node_id": "rmn_2bcdb7f1c3723c03c156207c",
+      "type": "task",
+      "depth": 2,
+      "locked": false,
+      "status": "done",
+      "order": 0,
+      "feature_id": null,
+      "title": "recorder/encoding.py",
+      "summary": "Central video encoder selection: check once (via ffmpeg -encoders) that h264_videotoolbox hardware encoding is available and return its ffmpeg arguments for a given bitrate, falling back to libx264 with a fast preset when the ffmpeg build lacks it",
+      "detail": "{\"fileChangeMode\":\"write-file\",\"action\":\"create\",\"description\":\"Central video encoder selection: check once (via ffmpeg -encoders) that h264_videotoolbox hardware encoding is available and return its ffmpeg arguments for a given bitrate, falling back to libx264 with a fast preset when the ffmpeg build lacks it\",\"needsFileContent\":true,\"needsMetadata\":false,\"confident\":true,\"fileStatus\":\"done\",\"metadataStatus\":\"not_needed\",\"metadata\":null}",
+      "linked_element_ids": [],
+      "finalized": false,
+      "blocked_by": [],
+      "notes": "",
+      "createdAt": "2026-10-21T13:55:48.741Z",
+      "updatedAt": "2026-10-21T13:56:16.960Z"
+    },
+    {
       "roadmap_node_id": "rmn_10baf0aca3f8b39da83b3397",
       "project_id": "9b3183b2-bfd9-4cad-abef-05891f52b874",
       "parent_roadmap_node_id": "rmn_4774dd81fe9dd4fd59527875",
@@ -701,6 +721,26 @@
       "notes": "",
       "createdAt": "2026-10-21T13:51:24.375Z",
       "updatedAt": "2026-10-21T13:53:37.722Z"
+    },
+    {
+      "roadmap_node_id": "rmn_8c7cec7e79b21c93fa66a250",
+      "project_id": "9b3183b2-bfd9-4cad-abef-05891f52b874",
+      "parent_roadmap_node_id": "rmn_2bcdb7f1c3723c03c156207c",
+      "type": "task",
+      "depth": 2,
+      "locked": false,
+      "status": "done",
+      "order": 1,
+      "feature_id": null,
+      "title": "recorder/capture.py",
+      "summary": "Build the camera and screen commands with the shared encoder arguments instead of hard-coded h264_videotoolbox flags, so both live captures use hardware encoding whenever available",
+      "detail": "{\"fileChangeMode\":\"patch\",\"action\":\"modify\",\"description\":\"Build the camera and screen commands with the shared encoder arguments instead of hard-coded h264_videotoolbox flags, so both live captures use hardware encoding whenever available\",\"needsFileContent\":true,\"needsMetadata\":false,\"confident\":true,\"fileStatus\":\"done\",\"metadataStatus\":\"not_needed\",\"metadata\":null}",
+      "linked_element_ids": [],
+      "finalized": false,
+      "blocked_by": [],
+      "notes": "",
+      "createdAt": "2026-10-21T13:55:48.846Z",
+      "updatedAt": "2026-10-21T15:29:34.477Z"
     },
     {
       "roadmap_node_id": "rmn_80f892ac62b81da5f7d64917",
@@ -823,6 +863,26 @@
       "updatedAt": "2026-10-21T13:54:08.192Z"
     },
     {
+      "roadmap_node_id": "rmn_35231bc2d6a0d4d8eb125b4e",
+      "project_id": "9b3183b2-bfd9-4cad-abef-05891f52b874",
+      "parent_roadmap_node_id": "rmn_2bcdb7f1c3723c03c156207c",
+      "type": "task",
+      "depth": 2,
+      "locked": false,
+      "status": "done",
+      "order": 2,
+      "feature_id": null,
+      "title": "recorder/compositor.py",
+      "summary": "Use the shared encoder arguments for the final.mp4 encode so compositing also uses hardware encoding when available",
+      "detail": "{\"fileChangeMode\":\"patch\",\"action\":\"modify\",\"description\":\"Use the shared encoder arguments for the final.mp4 encode so compositing also uses hardware encoding when available\",\"needsFileContent\":true,\"needsMetadata\":false,\"confident\":true,\"fileStatus\":\"done\",\"metadataStatus\":\"not_needed\",\"metadata\":null}",
+      "linked_element_ids": [],
+      "finalized": false,
+      "blocked_by": [],
+      "notes": "",
+      "createdAt": "2026-10-21T13:55:48.929Z",
+      "updatedAt": "2026-10-21T15:29:50.662Z"
+    },
+    {
       "roadmap_node_id": "rmn_ac668d758415166ee63f361e",
       "project_id": "9b3183b2-bfd9-4cad-abef-05891f52b874",
       "parent_roadmap_node_id": "rmn_4774dd81fe9dd4fd59527875",
@@ -901,6 +961,26 @@
       "notes": "",
       "createdAt": "2026-10-21T13:51:24.530Z",
       "updatedAt": "2026-10-21T13:54:30.095Z"
+    },
+    {
+      "roadmap_node_id": "rmn_7348392b61a678aefd91e5d0",
+      "project_id": "9b3183b2-bfd9-4cad-abef-05891f52b874",
+      "parent_roadmap_node_id": "rmn_2bcdb7f1c3723c03c156207c",
+      "type": "task",
+      "depth": 2,
+      "locked": false,
+      "status": "done",
+      "order": 3,
+      "feature_id": null,
+      "title": "README.md",
+      "summary": "Document the low-CPU design: hardware encoding for capture and compositing, the libx264 fallback for ffmpeg builds without VideoToolbox, how to check CPU use, and add encoding.py to the project layout",
+      "detail": "{\"fileChangeMode\":\"patch\",\"action\":\"modify\",\"description\":\"Document the low-CPU design: hardware encoding for capture and compositing, the libx264 fallback for ffmpeg builds without VideoToolbox, how to check CPU use, and add encoding.py to the project layout\",\"needsFileContent\":true,\"needsMetadata\":false,\"confident\":true,\"fileStatus\":\"done\",\"metadataStatus\":\"not_needed\",\"metadata\":null}",
+      "linked_element_ids": [],
+      "finalized": false,
+      "blocked_by": [],
+      "notes": "",
+      "createdAt": "2026-10-21T13:55:49.005Z",
+      "updatedAt": "2026-10-21T15:30:07.592Z"
     },
     {
       "roadmap_node_id": "rmn_2c115fa4dd6aeadd94ffbf2c",
