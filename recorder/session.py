@@ -1,4 +1,9 @@
-"""Per-recording session folder: recordings/YYYY-MM-DD_HH-MM/.
+"""Per-recording session folder: <output folder>/YYYY-MM-DD_HH-MM/.
+
+The output folder is the one chosen in Settings; when none is set (None or an
+empty value) the default folder is used: recordings/ when running from source,
+or ~/Movies/Soul Screen Recorder when running as the packaged .app (whose
+working directory is inside the app and is not a place to save videos).
 
 Each session folder holds camera.mp4, screen.mp4 and final.mp4, so the raw
 streams are kept and can be re-composited later, plus sync.json with the
@@ -6,6 +11,7 @@ session's audio/video sync measurements and alignment offset.
 """
 
 import shutil
+import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -22,6 +28,21 @@ SYNC_FILENAME = "sync.json"
 
 # Refuse to start a recording with less free space than this.
 MIN_FREE_BYTES = 1024 * 1024 * 1024  # 1 GiB
+
+# Default output folder of the packaged .app (see default_output_root).
+PACKAGED_OUTPUT_ROOT = Path("~/Movies/Soul Screen Recorder")
+
+
+def default_output_root() -> Path:
+    """The folder used when no output folder is chosen in Settings.
+
+    Running from source this is recordings/ in the folder the app was started
+    from. A packaged .app (py2app sets sys.frozen) starts inside its own
+    bundle, so it saves to ~/Movies/Soul Screen Recorder instead.
+    """
+    if getattr(sys, "frozen", False):
+        return PACKAGED_OUTPUT_ROOT
+    return DEFAULT_OUTPUT_ROOT
 
 
 class SessionError(Exception):
@@ -56,8 +77,15 @@ def create_session(
     output_root: Optional[Path] = None,
     now: Optional[datetime] = None,
 ) -> Session:
-    """Create a new timestamped session folder and return its file paths."""
-    root = Path(output_root) if output_root is not None else DEFAULT_OUTPUT_ROOT
+    """Create a new timestamped session folder and return its file paths.
+
+    output_root is the folder chosen in Settings. None or an empty value
+    means "not set" and falls back to default_output_root().
+    """
+    if output_root is None or not str(output_root).strip():
+        root = default_output_root()
+    else:
+        root = Path(str(output_root).strip())
     root = root.expanduser()
 
     try:

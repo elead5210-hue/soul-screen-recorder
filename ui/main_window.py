@@ -3,9 +3,10 @@
 import re
 import threading
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
 from typing import Dict, Optional
 
+from recorder.app_settings import AppSettings
 from recorder.controller import DeviceOptions, RecorderController
 from recorder.device_settings import DeviceSettings, SettingsError
 from recorder.devices import AUTO_CHOICE
@@ -15,6 +16,26 @@ from recorder.state import RecorderState, style_for
 _CONTENT_WIDTH = 420
 # Longest message body shown; the rest is cut so the window stays a sane size.
 _MAX_BODY_CHARS = 900
+
+# Choices shown in the Settings section: (label, saved value).
+_PIP_SIZES = (
+    ("Small (240 px)", 240),
+    ("Medium (320 px)", 320),
+    ("Large (480 px)", 480),
+    ("Extra large (640 px)", 640),
+)
+_PIP_POSITIONS = (
+    ("Bottom right", "bottom-right"),
+    ("Bottom left", "bottom-left"),
+    ("Top right", "top-right"),
+    ("Top left", "top-left"),
+)
+_QUALITIES = (
+    ("Low (smaller files)", "low"),
+    ("Medium", "medium"),
+    ("High (larger files)", "high"),
+)
+_DEFAULT_FOLDER_TEXT = "Default (recordings folder)"
 
 
 class MainWindow:
@@ -139,6 +160,8 @@ class MainWindow:
         )
         self._devices_note.grid(row=3, column=1, sticky="w", padx=(8, 0), pady=(6, 0))
 
+        self._build_settings(frame)
+
         # Permissions note: only shown while Camera, Microphone or Screen
         # Recording access is turned off, so the problem is visible before
         # the user clicks Record.
@@ -248,6 +271,7 @@ class MainWindow:
         for box in self._device_boxes.values():
             box.config(state="readonly" if enabled else "disabled")
         self._refresh_button.config(state=tk.NORMAL if enabled else tk.DISABLED)
+        self._update_settings_controls()
 
     def _load_devices(self) -> None:
         """Fill the dropdowns without blocking the UI (ffmpeg takes a moment)."""
@@ -332,6 +356,168 @@ class MainWindow:
             )
         else:
             self._devices_note.config(text="", fg="#6b7280")
+
+    # ---- recording settings -------------------------------------------
+
+    def _build_settings(self, parent: tk.Widget) -> None:
+        """Settings section: PiP size and corner, output folder, quality."""
+        self._settings: AppSettings = self._controller.get_app_settings()
+
+        frame = tk.LabelFrame(parent, text="Settings", padx=10, pady=8)
+        frame.pack(fill=tk.X, pady=(16, 0))
+        frame.columnconfigure(1, weight=1)
+
+        # Label -> value lookups; a saved width that is not one of the
+        # presets is kept as an extra "Custom" entry.
+        self._size_values = dict(_PIP_SIZES)
+        size_label = next(
+            (l for l, w in _PIP_SIZES if w == self._settings.pip_width), None
+        )
+        if size_label is None:
+            size_label = f"Custom ({self._settings.pip_width} px)"
+            self._size_values[size_label] = self._settings.pip_width
+        self._position_values = dict(_PIP_POSITIONS)
+        self._quality_values = dict(_QUALITIES)
+
+        self._size_var = tk.StringVar(value=size_label)
+        self._position_var = tk.StringVar(
+            value=next(
+                (l for l, v in _PIP_POSITIONS if v == self._settings.pip_position),
+                _PIP_POSITIONS[0][0],
+            )
+        )
+        self._quality_var = tk.StringVar(
+            value=next(
+                (l for l, v in _QUALITIES if v == self._settings.quality),
+                _QUALITIES[1][0],
+            )
+        )
+
+        self._settings_boxes = []
+        for row, (title, var, values) in enumerate(
+            (
+                ("Presenter size", self._size_var, list(self._size_values)),
+                ("Presenter corner", self._position_var, [l for l, _ in _PIP_POSITIONS]),
+                ("Video quality", self._quality_var, [l for l, _ in _QUALITIES]),
+            )
+        ):
+            tk.Label(frame, text=title, anchor="w").grid(
+                row=row, column=0, sticky="w", padx=(0, 10), pady=3
+            )
+            box = ttk.Combobox(
+                frame, textvariable=var, values=values, state="readonly", width=30
+            )
+            box.grid(row=row, column=1, sticky="ew", pady=3)
+            box.bind("<<ComboboxSelected>>", self._on_setting_change)
+            self._settings_boxes.append(box)
+
+        tk.Label(frame, text="Save recordings in", anchor="w").grid(
+            row=3, column=0, sticky="w", padx=(0, 10), pady=3
+        )
+        self._folder_var = tk.StringVar(value=self._folder_text())
+        tk.Entry(
+            frame, textvariable=self._folder_var, state="readonly", width=32
+        ).grid(row=3, column=1, sticky="ew", pady=3)
+
+        buttons = tk.Frame(frame)
+        buttons.grid(row=4, column=1, sticky="w", pady=(2, 0))
+        self._browse_button = tk.Button(
+            buttons, text="Browse...", command=self._on_browse_folder
+        )
+        self._browse_button.pack(side=tk.LEFT)
+        self._default_folder_button = tk.Button(
+            buttons, text="Use default", command=self._on_default_folder
+        )
+        self._default_folder_button.pack(side=tk.LEFT, padx=(8, 0))
+
+        self._settings_note = tk.Label(
+            frame,
+            text="",
+            font=("Helvetica", 10),
+            fg="#6b7280",
+            wraplength=300,
+            justify="left",
+            anchor="w",
+        )
+        self._settings_note.grid(row=5, column=0, columnspan=2, sticky="w", pady=(4, 0))
+
+    def _folder_text(self) -> str:
+        return self._settings.output_folder or _DEFAULT_FOLDER_TEXT
+
+    def _update_settings_controls(self) -> None:
+        """Settings can only change while idle (not while recording)."""
+        busy = self._closing or self._controller.state in (
+            RecorderState.STARTING,
+            RecorderState.RECORDING,
+            RecorderState.PROCESSING,
+        )
+        for box in self._settings_boxes:
+            box.config(state="disabled" if busy else "readonly")
+        state = tk.DISABLED if busy else tk.NORMAL
+        self._browse_button.config(state=state)
+        self._default_folder_button.config(state=state)
+
+    def _save_settings(self, settings: AppSettings) -> None:
+        """Save the settings right away and report a failure under them."""
+        try:
+            self._controller.save_app_settings(settings)
+        except SettingsError as exc:
+            self._settings_note.config(
+                text=f"Could not save your settings: {exc}", fg="#7f1d1d"
+            )
+            return
+        self._settings = settings
+        self._folder_var.set(self._folder_text())
+        self._settings_note.config(text="", fg="#6b7280")
+
+    def _on_setting_change(self, _event: Optional[tk.Event] = None) -> None:
+        self._save_settings(
+            AppSettings(
+                pip_width=self._size_values.get(
+                    self._size_var.get(), self._settings.pip_width
+                ),
+                pip_position=self._position_values.get(
+                    self._position_var.get(), self._settings.pip_position
+                ),
+                output_folder=self._settings.output_folder,
+                quality=self._quality_values.get(
+                    self._quality_var.get(), self._settings.quality
+                ),
+            )
+        )
+
+    def _on_browse_folder(self) -> None:
+        if self._closing:
+            return
+        current = self._settings.output_path()
+        initial = str(current) if current is not None and current.is_dir() else ""
+        chosen = filedialog.askdirectory(
+            parent=self._root,
+            title="Choose where recordings are saved",
+            initialdir=initial or None,
+        )
+        if not chosen:
+            return
+        self._save_settings(
+            AppSettings(
+                pip_width=self._settings.pip_width,
+                pip_position=self._settings.pip_position,
+                output_folder=chosen,
+                quality=self._settings.quality,
+            )
+        )
+
+    def _on_default_folder(self) -> None:
+        if self._closing:
+            return
+        self._save_settings(
+            AppSettings(
+                pip_width=self._settings.pip_width,
+                pip_position=self._settings.pip_position,
+                output_folder="",
+                quality=self._settings.quality,
+            )
+        )
 
     # ---- permissions --------------------------------------------------
 

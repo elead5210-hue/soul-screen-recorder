@@ -9,7 +9,9 @@ running capture cleanly before the app exits. Any capture, device or session
 failure is surfaced as the ERROR state with a message.
 After Stop, the `_process` hook composites the two raw files into final.mp4
 (screen with the presenter in a bottom-right overlay); a compositing failure
-is also surfaced as the ERROR state, and the raw files are kept.
+is also surfaced as the ERROR state, and the raw files are kept. final.mp4 is
+checked once it is written (it must open and decode), so the DONE state only
+appears when all three files are playable.
 Before recording, the sound output is checked: system audio is only captured
 (and still audible) when the Mac outputs to a Multi-Output Device that includes
 BlackHole 2ch; otherwise the ERROR state explains how to set that up.
@@ -29,7 +31,8 @@ from typing import Callable, List, Optional, Tuple
 
 from recorder.audio_output import OutputKind, detect_default_output
 from recorder.capture import STOP_TIMEOUT_SECONDS, CaptureError, DualCapture
-from recorder.compositor import composite
+from recorder.app_settings import AppSettings, load_app_settings, save_app_settings
+from recorder.compositor import CompositeError, composite
 from recorder.device_settings import DeviceSettings, load_settings, save_settings
 from recorder.devices import (
     DeviceError,
@@ -52,6 +55,7 @@ from recorder.errors import friendly_message
 from recorder.session import Session, SessionError, create_session
 from recorder.state import RecorderState
 from recorder.sync import SyncError, load_sync, record_launch_gap
+from recorder.verify import VerifyError, check_file
 
 StateListener = Callable[[RecorderState, Optional[str]], None]
 
@@ -205,6 +209,24 @@ class RecorderController:
         """
         save_settings(settings)
 
+    # ---- recording settings -------------------------------------------
+
+    def get_app_settings(self) -> AppSettings:
+        """The saved recording settings (defaults if none were saved).
+
+        Covers the PiP size and position, the output folder and the video
+        quality. Never raises.
+        """
+        return load_app_settings()
+
+    def save_app_settings(self, settings: AppSettings) -> None:
+        """Remember the recording settings for next time.
+
+        Values are validated on save. Raises SettingsError if they cannot
+        be saved.
+        """
+        save_app_settings(settings)
+
     # ---- listeners ----------------------------------------------------
 
     def add_listener(self, listener: StateListener) -> None:
@@ -351,8 +373,16 @@ class RecorderController:
             microphone_name=choices.microphone,
             screen_name=choices.screen,
         )
-        session = create_session()
-        capture = DualCapture(devices, session.camera_path, session.screen_path)
+        # load_app_settings never raises: a missing or damaged file gives the
+        # defaults (recordings/ folder, medium quality).
+        prefs = load_app_settings()
+        session = create_session(prefs.output_path())
+        capture = DualCapture(
+            devices,
+            session.camera_path,
+            session.screen_path,
+            quality=prefs.quality,
+        )
         capture.start()
         return session, capture
 
@@ -389,9 +419,28 @@ class RecorderController:
             raise RuntimeError("No recording session to process.")
         # load_sync never raises: a missing or damaged sync.json gives 0.
         offset = load_sync(session.sync_path).camera_offset_seconds
+        prefs = load_app_settings()
         composite(
             session.screen_path,
             session.camera_path,
             session.final_path,
             camera_offset=offset,
+            pip_width=prefs.pip_width,
+            pip_position=prefs.pip_position,
+            quality=prefs.quality,
         )
+
+        # The raw files were verified when the capture stopped. Check the
+        # final video too, so DONE always means three playable files.
+        try:
+            result = check_file(session.final_path)
+        except VerifyError:
+            # The check itself could not run (for example ffmpeg vanished
+            # after compositing); do not fail a video that was just written.
+            return
+        if not result.ok:
+            raise CompositeError(
+                f"The final video {result.detail}. camera.mp4 and screen.mp4 "
+                "are still saved; create the final video again with "
+                "recorder.recomposite."
+            )

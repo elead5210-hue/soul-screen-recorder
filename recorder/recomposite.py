@@ -5,6 +5,10 @@ Usage:
     python3 -m recorder.recomposite recordings/2026-10-21_14-46 --pip-width 480 --margin 30
     python3 -m recorder.recomposite recordings/2026-10-21_14-46 --output final_large_pip.mp4
     python3 -m recorder.recomposite recordings/2026-10-21_14-46 --camera-offset 0.35
+    python3 -m recorder.recomposite recordings/2026-10-21_14-46 --pip-position top-left --quality high
+
+When --pip-width, --pip-position or --quality are omitted, the values saved in
+the app's Settings are used.
 
 --camera-offset (seconds) fine-aligns the presenter against the screen:
 positive delays the presenter (camera video and microphone), negative makes
@@ -21,9 +25,10 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
+from recorder.app_settings import QUALITY_PRESETS, load_app_settings
 from recorder.compositor import (
     DEFAULT_PIP_MARGIN,
-    DEFAULT_PIP_WIDTH,
+    PIP_POSITIONS,
     CompositeError,
     composite,
 )
@@ -52,14 +57,26 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--pip-width",
         type=int,
-        default=DEFAULT_PIP_WIDTH,
-        help=f"width of the presenter overlay in pixels (default {DEFAULT_PIP_WIDTH})",
+        default=None,
+        help="width of the presenter overlay in pixels (default: the saved Settings value)",
     )
     parser.add_argument(
         "--margin",
         type=int,
         default=DEFAULT_PIP_MARGIN,
-        help=f"distance from the bottom-right corner in pixels (default {DEFAULT_PIP_MARGIN})",
+        help=f"distance from the chosen corner in pixels (default {DEFAULT_PIP_MARGIN})",
+    )
+    parser.add_argument(
+        "--pip-position",
+        choices=PIP_POSITIONS,
+        default=None,
+        help="corner for the presenter overlay (default: the saved Settings value)",
+    )
+    parser.add_argument(
+        "--quality",
+        choices=QUALITY_PRESETS,
+        default=None,
+        help="video quality preset (default: the saved Settings value)",
     )
     parser.add_argument(
         "--camera-offset",
@@ -90,7 +107,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     if not folder.is_dir():
         print(f"Error: session folder not found: {folder}", file=sys.stderr)
         return 1
-    if args.pip_width < 2:
+    # Options left out use the saved Settings (defaults if none are saved).
+    prefs = load_app_settings()
+    pip_width = args.pip_width if args.pip_width is not None else prefs.pip_width
+    pip_position = args.pip_position or prefs.pip_position
+    quality = args.quality or prefs.quality
+    if pip_width < 2:
         print("Error: --pip-width must be at least 2.", file=sys.stderr)
         return 1
     if args.margin < 0:
@@ -128,9 +150,11 @@ def main(argv: Optional[List[str]] = None) -> int:
             folder / SCREEN_FILENAME,
             folder / CAMERA_FILENAME,
             folder / output_name,
-            pip_width=args.pip_width,
+            pip_width=pip_width,
             margin=args.margin,
             camera_offset=camera_offset,
+            pip_position=pip_position,
+            quality=quality,
         )
     except CompositeError as exc:
         print(f"Error: {exc}", file=sys.stderr)

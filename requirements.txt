@@ -1,5 +1,12 @@
 # soul-screen-recorder v1 - Python dependencies
 #
+# One-command run:  ./run.sh
+# It creates the venv/ virtual environment on first run, installs this file
+# whenever it changes, checks for Tkinter and ffmpeg, and starts the app.
+# (Manual alternative: pip install -r requirements.txt, then python3 main.py)
+#
+# This file lists no packages on purpose, and pip installs it without error.
+#
 # The core app (Tkinter UI + ffmpeg via subprocess) uses only the Python
 # standard library, so no packages are required to run it.
 # Tkinter ships with the python.org and Homebrew (python-tk) builds of Python.

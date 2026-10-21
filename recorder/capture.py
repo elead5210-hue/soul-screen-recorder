@@ -21,7 +21,11 @@ from pathlib import Path
 from typing import IO, List, Optional
 
 from recorder.devices import SelectedDevices, find_ffmpeg
-from recorder.encoding import video_encoder_args
+from recorder.encoding import (
+    DEFAULT_QUALITY,
+    video_encoder_args,
+    video_encoder_args_for_quality,
+)
 from recorder.errors import friendly_ffmpeg_failure, friendly_message
 
 # How long to wait for ffmpeg to finalize a file after we send "q".
@@ -30,6 +34,15 @@ STOP_TIMEOUT_SECONDS = 20
 STARTUP_CHECK_SECONDS = 1.5
 
 FRAMERATE = 30
+
+# Camera bitrate for each quality preset: half the screen bitrate (the screen
+# uses the preset's own bitrate from recorder.encoding), because the presenter
+# video is small and has less detail.
+CAMERA_BITRATES = {
+    "low": "2M",
+    "medium": "4M",
+    "high": "8M",
+}
 
 # Fragmented MP4: a new fragment (and keyframe) every couple of seconds.
 FRAGMENT_SECONDS = 2
@@ -126,15 +139,20 @@ class _FfmpegProcess:
 
 
 def build_camera_command(
-    ffmpeg: str, devices: SelectedDevices, output: Path
+    ffmpeg: str,
+    devices: SelectedDevices,
+    output: Path,
+    quality: str = DEFAULT_QUALITY,
 ) -> List[str]:
     """Camera video + microphone audio -> camera.mp4."""
+    name = quality.strip().lower() if isinstance(quality, str) else ""
+    camera_bitrate = CAMERA_BITRATES.get(name, CAMERA_BITRATES[DEFAULT_QUALITY])
     return [
         ffmpeg, "-hide_banner", "-y",
         "-f", "avfoundation",
         "-framerate", str(FRAMERATE),
         "-i", f"{devices.camera.index}:{devices.microphone.index}",
-        *video_encoder_args(ffmpeg, "4M", FRAMERATE * FRAGMENT_SECONDS),
+        *video_encoder_args(ffmpeg, camera_bitrate, FRAMERATE * FRAGMENT_SECONDS),
         "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-b:a", "160k",
         "-movflags", MOVFLAGS,
@@ -143,7 +161,10 @@ def build_camera_command(
 
 
 def build_screen_command(
-    ffmpeg: str, devices: SelectedDevices, output: Path
+    ffmpeg: str,
+    devices: SelectedDevices,
+    output: Path,
+    quality: str = DEFAULT_QUALITY,
 ) -> List[str]:
     """Screen video + system audio (BlackHole) -> screen.mp4."""
     return [
@@ -152,7 +173,9 @@ def build_screen_command(
         "-capture_cursor", "1",
         "-framerate", str(FRAMERATE),
         "-i", f"{devices.screen.index}:{devices.system_audio.index}",
-        *video_encoder_args(ffmpeg, "8M", FRAMERATE * FRAGMENT_SECONDS),
+        *video_encoder_args_for_quality(
+            ffmpeg, quality, FRAMERATE * FRAGMENT_SECONDS
+        ),
         "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-b:a", "160k",
         "-movflags", MOVFLAGS,
@@ -192,16 +215,17 @@ class DualCapture:
         camera_path: Path,
         screen_path: Path,
         ffmpeg_path: Optional[str] = None,
+        quality: str = DEFAULT_QUALITY,
     ) -> None:
         ffmpeg = ffmpeg_path or find_ffmpeg()
         self._ffmpeg = ffmpeg
         self.camera_path = camera_path
         self.screen_path = screen_path
         self._camera = _FfmpegProcess(
-            "camera", build_camera_command(ffmpeg, devices, camera_path)
+            "camera", build_camera_command(ffmpeg, devices, camera_path, quality)
         )
         self._screen = _FfmpegProcess(
-            "screen", build_screen_command(ffmpeg, devices, screen_path)
+            "screen", build_screen_command(ffmpeg, devices, screen_path, quality)
         )
         self._started = False
         self._launch_gap_seconds: Optional[float] = None

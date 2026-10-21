@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from recorder.devices import find_ffmpeg
-from recorder.encoding import video_encoder_args
+from recorder.encoding import DEFAULT_QUALITY, video_encoder_args_for_quality
 from recorder.errors import (
     DISK_FULL_MESSAGE,
     FFMPEG_NOT_FOUND_MESSAGE,
@@ -29,11 +29,17 @@ from recorder.errors import (
 # Default picture-in-picture layout.
 DEFAULT_PIP_WIDTH = 320
 DEFAULT_PIP_MARGIN = 20
+# Corner of the screen where the presenter video is placed.
+PIP_POSITIONS = ("bottom-right", "bottom-left", "top-right", "top-left")
+DEFAULT_PIP_POSITION = "bottom-right"
 
 VIDEO_BITRATE = "8M"
 # Keyframe interval in frames (about 2 seconds at 30 fps).
 VIDEO_GOP = 60
 AUDIO_BITRATE = "192k"
+# Sample rate both audio inputs are resampled to before mixing, so the
+# mic and system audio share one rate and stay aligned over time.
+MIX_SAMPLE_RATE = 48000
 
 # Compositing re-encodes the whole recording, so allow plenty of time.
 COMPOSITE_TIMEOUT_SECONDS = 60 * 60
@@ -65,6 +71,7 @@ def build_filter_graph(
     screen_has_audio: bool,
     camera_has_audio: bool,
     camera_offset: float = 0.0,
+    pip_position: str = DEFAULT_PIP_POSITION,
 ) -> "tuple[str, Optional[str]]":
     """Return (filter_complex, audio_label).
 
@@ -90,24 +97,37 @@ def build_filter_graph(
         video_shift = f"trim=start={-offset:.3f},setpts=PTS-STARTPTS,"
         audio_shift = f"atrim=start={-offset:.3f},asetpts=PTS-STARTPTS"
 
+    # Overlay coordinates for the chosen corner; unknown names fall back to
+    # the default bottom-right corner.
+    gap = int(margin)
+    position = pip_position if pip_position in PIP_POSITIONS else DEFAULT_PIP_POSITION
+    pip_x = f"W-w-{gap}" if position.endswith("right") else str(gap)
+    pip_y = f"H-h-{gap}" if position.startswith("bottom") else str(gap)
+
     parts = [
         f"[1:v]{video_shift}scale={width}:-2[pip]",
-        f"[0:v][pip]overlay=W-w-{int(margin)}:H-h-{int(margin)},"
+        f"[0:v][pip]overlay={pip_x}:{pip_y},"
         "format=yuv420p[v]",
     ]
 
-    # The camera audio input to use: the raw stream, or the shifted copy.
-    camera_audio_in = "[1:a]"
-    if camera_has_audio and audio_shift:
-        parts.append(f"[1:a]{audio_shift}[ca]")
-        camera_audio_in = "[ca]"
-
     audio_label: Optional[str] = None
     if screen_has_audio and camera_has_audio:
+        # Resample both inputs to one shared rate with timestamp
+        # correction (aresample async, first_pts=0) so the mic and the
+        # system audio start aligned and stay in sync over long
+        # recordings, then apply the camera offset and mix them.
+        parts.append(
+            f"[0:a]aresample={MIX_SAMPLE_RATE}:async=1:first_pts=0[sa]"
+        )
+        parts.append(f"[1:a]aresample={MIX_SAMPLE_RATE}:async=1:first_pts=0[cr]")
+        camera_mixed_in = "[cr]"
+        if audio_shift:
+            parts.append(f"[cr]{audio_shift}[ca]")
+            camera_mixed_in = "[ca]"
         # amix lowers each input's level, so bring the mix back up and
         # use a limiter to avoid clipping when both sources are loud.
         parts.append(
-            f"[0:a]{camera_audio_in}"
+            f"[sa]{camera_mixed_in}"
             "amix=inputs=2:duration=longest:dropout_transition=0,"
             "volume=2,alimiter=limit=0.95[a]"
         )
@@ -115,7 +135,13 @@ def build_filter_graph(
     elif screen_has_audio:
         audio_label = "0:a"
     elif camera_has_audio:
-        audio_label = "1:a" if camera_audio_in == "[1:a]" else camera_audio_in
+        # Only the camera audio is mapped: use the raw stream, or the
+        # shifted copy when an offset is set.
+        camera_audio_in = "[1:a]"
+        if audio_shift:
+            parts.append(f"[1:a]{audio_shift}[ca]")
+            camera_audio_in = "[ca]"
+        audio_label = camera_audio_in
 
     return ";".join(parts), audio_label
 
@@ -130,10 +156,17 @@ def build_composite_command(
     screen_has_audio: bool = True,
     camera_has_audio: bool = True,
     camera_offset: float = 0.0,
+    pip_position: str = DEFAULT_PIP_POSITION,
+    quality: str = DEFAULT_QUALITY,
 ) -> List[str]:
     """Build the ffmpeg command that writes the PiP video to `output`."""
     graph, audio_label = build_filter_graph(
-        pip_width, margin, screen_has_audio, camera_has_audio, camera_offset
+        pip_width,
+        margin,
+        screen_has_audio,
+        camera_has_audio,
+        camera_offset,
+        pip_position,
     )
     cmd = [
         ffmpeg, "-hide_banner", "-y",
@@ -145,7 +178,7 @@ def build_composite_command(
     if audio_label is not None:
         cmd += ["-map", audio_label, "-c:a", "aac", "-b:a", AUDIO_BITRATE]
     cmd += [
-        *video_encoder_args(ffmpeg, VIDEO_BITRATE, VIDEO_GOP),
+        *video_encoder_args_for_quality(ffmpeg, quality, VIDEO_GOP),
         "-pix_fmt", "yuv420p",
         # Stop at the shortest stream so the mix never runs past the video.
         "-shortest",
@@ -163,6 +196,8 @@ def composite(
     margin: int = DEFAULT_PIP_MARGIN,
     ffmpeg_path: Optional[str] = None,
     camera_offset: float = 0.0,
+    pip_position: str = DEFAULT_PIP_POSITION,
+    quality: str = DEFAULT_QUALITY,
 ) -> Path:
     """Create final.mp4 from the two raw recordings and return its path.
 
@@ -195,6 +230,8 @@ def composite(
         screen_has_audio=_has_audio(ffmpeg, screen_path),
         camera_has_audio=_has_audio(ffmpeg, camera_path),
         camera_offset=camera_offset,
+        pip_position=pip_position,
+        quality=quality,
     )
     temp_path = Path(cmd[-1])
 

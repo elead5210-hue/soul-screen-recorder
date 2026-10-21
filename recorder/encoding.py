@@ -20,6 +20,16 @@ SOFTWARE_ENCODER = "libx264"
 
 _TIMEOUT_SECONDS = 15
 
+# Video quality presets and the bitrate each one uses. "medium" matches the
+# bitrate the app used before quality became a setting. The names match
+# recorder.app_settings.QUALITY_PRESETS.
+QUALITY_BITRATES: Dict[str, str] = {
+    "low": "3M",
+    "medium": "8M",
+    "high": "16M",
+}
+DEFAULT_QUALITY = "medium"
+
 # Cache of ffmpeg path -> whether h264_videotoolbox is available.
 _hardware_cache: Dict[str, bool] = {}
 
@@ -81,6 +91,25 @@ def video_encoder_args(ffmpeg: str, bitrate: str, gop: int) -> List[str]:
         "-b:v", bitrate,
         "-g", str(gop),
     ]
+
+
+def quality_bitrate(quality: str) -> str:
+    """Return the ffmpeg bitrate for a quality preset name.
+
+    The name is matched case-insensitively; anything unknown falls back to
+    the default (medium) preset so a bad value never stops a recording.
+    """
+    name = quality.strip().lower() if isinstance(quality, str) else ""
+    return QUALITY_BITRATES.get(name, QUALITY_BITRATES[DEFAULT_QUALITY])
+
+
+def video_encoder_args_for_quality(ffmpeg: str, quality: str, gop: int) -> List[str]:
+    """Return the encoder arguments for a quality preset name.
+
+    Same as video_encoder_args, but takes "low", "medium" or "high" instead
+    of a raw bitrate.
+    """
+    return video_encoder_args(ffmpeg, quality_bitrate(quality), gop)
 
 
 def describe_encoder(ffmpeg: str) -> str:

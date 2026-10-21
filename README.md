@@ -1,8 +1,22 @@
 # Soul Screen Recorder
 
-A macOS app (Python) that records the screen and the presenter as two separate streams, then combines them into one video with the presenter in a picture-in-picture at the bottom right.
+A macOS app (Python) that records the screen and the presenter as two separate streams, then combines them into one video with the presenter in a picture-in-picture (bottom right by default; the size and corner can be changed in [Settings](#settings)).
 
 > **Current status (v1):** the window, the single Record/Stop button, the status indicator and the two ffmpeg captures are implemented. Record starts the camera and screen captures; Stop finalizes `camera.mp4` and `screen.mp4` in a timestamped folder and then automatically combines them into `final.mp4`: the screen as the main video, the presenter in a small bottom-right overlay, and the microphone and system audio mixed together.
+
+## Quick start
+
+Setup is five steps, in this order. Each step links to the section with the details:
+
+1. Install **ffmpeg** and **BlackHole 2ch** with Homebrew: [Install ffmpeg and BlackHole](#install-ffmpeg-and-blackhole).
+2. Get the code and install the **Python dependencies**: [Install](#install) and [Python dependencies](#python-dependencies).
+3. Create a **Multi-Output Device** in Audio MIDI Setup so system audio is recorded and you can still hear it: [Set up system audio](#set-up-system-audio-multi-output-device).
+4. Allow **Camera**, **Microphone** and **Screen Recording** for the app that launches Python: [macOS permissions](#macos-permissions).
+5. Start the app with `./run.sh` and click **Record**: [Run](#run) and [How to use](#how-to-use).
+
+Steps 2 and 5 are one command: `./run.sh` creates the virtual environment on the first run, installs the Python dependencies, checks that Tkinter and ffmpeg are present and starts the app. Do steps 1, 3 and 4 once; after that, `./run.sh` is all you need.
+
+Prefer an app you can double-click? See [Packaged app (optional)](#packaged-app-optional).
 
 ## Requirements
 
@@ -114,6 +128,53 @@ The app does not fail. The saved name stays in the dropdown and a note under it 
 - **"Could not save your choice".** The settings folder could not be written. Check that `~/Library/Application Support` is writable; recording still works with the choice you picked for this session of the app.
 - **A device I unplugged is still listed.** That is the remembered choice (see above). Choose **Auto-detect** to forget it.
 
+## Settings
+
+The **Settings** section of the window (under **Devices**) lets you change how recordings look and where they are saved. Every change is saved as soon as you make it and is used from the next recording on. Nothing needs to be edited in code.
+
+| Setting | Choices | Default |
+|---------|---------|---------|
+| **Presenter size** | Small (240 px), Medium (320 px), Large (480 px), Extra large (640 px): the width of the presenter overlay in `final.mp4` | Medium (320 px) |
+| **Presenter corner** | Bottom right, bottom left, top right, top left | Bottom right |
+| **Video quality** | Low (smaller files), Medium, High (larger files) | Medium |
+| **Save recordings in** | Any folder you choose with **Browse...**; **Use default** goes back to the `recordings/` folder | `recordings/` in the folder you run the app from (`~/Movies/Soul Screen Recorder` in the packaged app) |
+
+### Video quality
+
+The quality preset sets the video bitrate of both captures and of `final.mp4`. Audio is not affected.
+
+| Preset | Screen and `final.mp4` | Camera |
+|--------|------------------------|--------|
+| Low | 3 Mbit/s | 2 Mbit/s |
+| Medium | 8 Mbit/s | 4 Mbit/s |
+| High | 16 Mbit/s | 8 Mbit/s |
+
+Higher quality means sharper video (especially small text on screen) but larger files and more disk space; Medium matches what earlier versions of the app always used. Hardware encoding is still used for every preset (see Low CPU use).
+
+### Output folder
+
+Each recording still gets its own timestamped folder, now inside the folder you chose (for example `~/Movies/Recordings/2026-10-21_14-46/`). The free-space check and the other folder errors apply to that folder. If the folder you chose cannot be created or written to, recording does not start and the **Error** status says so; choose another folder or click **Use default**.
+
+### When settings can be changed
+
+The Settings controls are disabled while the app is starting, recording or processing, so a recording can never change halfway through. They become active again when the status returns to Idle, Done or Error.
+
+### Where your settings are saved
+
+Settings are remembered between runs in a small JSON file next to the device choices, not in the project folder:
+
+```
+~/Library/Application Support/Soul Screen Recorder/settings.json
+```
+
+A missing or damaged file, or a value that is not valid, simply means the default for that setting, so it can never stop a recording from starting. To reset everything, delete that file.
+
+### Settings troubleshooting
+
+- **"Could not save your settings".** The settings folder could not be written. Check that `~/Library/Application Support` is writable; recording still works with the values shown.
+- **The Settings controls are greyed out.** The app is starting, recording or processing. Wait for the status to return to Idle or Done.
+- **I changed the presenter size or corner but my last video did not change.** Settings apply to the next recording. To change an existing recording, run `recorder.recomposite` (see below); it uses your saved settings unless you pass `--pip-width`, `--pip-position` or `--quality`.
+
 ## Set up system audio (Multi-Output Device)
 
 BlackHole 2ch is a virtual audio device that lets the app record what your Mac is playing. On its own it is silent to you, so create a Multi-Output Device that sends sound to both your speakers or headphones and BlackHole:
@@ -207,7 +268,7 @@ A problem the app does not recognise is shown with its own description and the l
 
 ## Where recordings are saved
 
-Each recording gets its own timestamped folder inside `recordings/`, created in the folder you run the app from:
+Each recording gets its own timestamped folder inside the output folder. By default that is `recordings/`, created in the folder you run the app from (in the packaged app it is `~/Movies/Soul Screen Recorder`); you can choose another folder in [Settings](#settings):
 
 ```
 recordings/2026-10-21_14-46/
@@ -217,13 +278,13 @@ recordings/2026-10-21_14-46/
   sync.json     audio/video sync: measured launch gap and the camera offset (see Audio/video sync)
 ```
 
-In `final.mp4` the presenter is scaled to about 320 px wide and placed in the bottom-right corner with a 20 px margin. `final.mp4` is written to a temporary file first and only renamed when ffmpeg succeeds, so a failed run never leaves a broken file. If compositing fails, the app shows the **Error** status, and `camera.mp4` and `screen.mp4` are still saved.
+In `final.mp4` the presenter is scaled to the width chosen in Settings (about 320 px by default) and placed in the chosen corner (bottom right by default) with a 20 px margin. `final.mp4` is written to a temporary file first and only renamed when ffmpeg succeeds, so a failed run never leaves a broken file. If compositing fails, the app shows the **Error** status, and `camera.mp4` and `screen.mp4` are still saved.
 
 If you start two recordings within the same minute, the second folder gets a `-2` suffix, so an earlier recording is never overwritten. The app refuses to start if less than 1 GB of disk space is free.
 
 `sync.json` is a small text file the app writes when a recording stops cleanly. It holds the measured start gap between the two captures and the fine-alignment offset used for `final.mp4` (see [Audio/video sync](#audiovideo-sync)).
 
-When a recording finishes, the **Done** status shows the folder it was saved to.
+When a recording finishes, the **Done** status shows the folder it was saved to. **Done** is only shown when all three files passed the playable check (see [Acceptance test](#acceptance-test-three-playable-files)).
 
 ## Reliable file output
 
@@ -232,6 +293,7 @@ Stopping always tries to leave playable MP4 files behind, even when something go
 - **Clean stop.** On Stop, the app sends `q` to both ffmpeg processes. ffmpeg then flushes its buffers and finishes the files properly. If a process has not exited after 20 seconds, it is terminated, and then force-killed if needed.
 - **Crash-resilient MP4s.** `camera.mp4` and `screen.mp4` are written as fragmented MP4 (a new playable fragment about every 2 seconds). If ffmpeg is force-closed, or the app or the Mac crashes during a recording, everything recorded up to the last fragment stays playable instead of the file being left without its index.
 - **Verification after stop.** Before reporting success, the app checks that both files exist, are not empty, and can be opened by ffmpeg. If a file is missing or unreadable, the **Error** status explains which one, and `final.mp4` is not created from it.
+- **Verification of the final video.** After compositing, the app opens `final.mp4` and decodes its first video frame too. If that fails, the **Error** status says the final video cannot be played, `camera.mp4` and `screen.mp4` are kept, and you can create it again with `recorder.recomposite`. The **Done** status is therefore only shown when all three files are playable.
 - **Safe closing.** If you close the window while starting, recording or processing, the app asks for confirmation. If you confirm, it stops the captures cleanly and waits for the files to finish saving (a few seconds, with the window still responsive) before quitting. If you close the window while the captures are still starting, they are stopped as soon as they are up, so no ffmpeg process is left running. `camera.mp4` and `screen.mp4` are kept, but `final.mp4` is not created on quit; create it later with `recorder.recomposite` (see below).
 
 Quitting the app in other ways, such as force-quitting or pressing Ctrl+C in the terminal, cannot stop ffmpeg cleanly. The fragmented format means the recording up to that moment should still be playable.
@@ -250,8 +312,10 @@ python3 -m recorder.recomposite recordings/2026-10-21_14-46
 
 By default this replaces `final.mp4` in that folder. Options:
 
-- `--pip-width 480` sets the overlay width in pixels (default 320)
-- `--margin 30` sets the distance from the bottom-right corner in pixels (default 20)
+- `--pip-width 480` sets the overlay width in pixels (default: the size saved in Settings, 320 px if none)
+- `--pip-position top-left` sets the overlay corner: `bottom-right`, `bottom-left`, `top-right` or `top-left` (default: the corner saved in Settings)
+- `--quality high` sets the video quality preset: `low`, `medium` or `high` (default: the quality saved in Settings)
+- `--margin 30` sets the distance from the chosen corner in pixels (default 20)
 - `--output final_large_pip.mp4` writes a different file name inside the session folder and keeps the existing `final.mp4`
 - `--camera-offset 0.35` fine-aligns the presenter against the screen, in seconds (see Audio/video sync). It is saved to `sync.json`; when you leave it out, the offset already saved there is used
 
@@ -262,6 +326,7 @@ The new file is written to a temporary file first and renamed only when ffmpeg s
 The presenter (`camera.mp4`) and the screen (`screen.mp4`) are recorded by two separate ffmpeg processes, so they never start at exactly the same instant.
 
 - **Back-to-back start.** Both commands are fully built first, and the two processes are then launched one right after the other with nothing in between, so they start within a fraction of a second of each other.
+- **Shared audio rate.** When `final.mp4` is made, both audio inputs are resampled to one shared rate with timestamp correction (`aresample` with `async`), so the microphone and system audio stay aligned over long recordings instead of drifting apart in the mix.
 - **Launch gap.** The app times each launch and, after a clean stop, saves the difference to `sync.json` as `launch_gap_seconds` (positive means the screen process was launched after the camera process). It is for information and troubleshooting only and is not applied automatically, because the time ffmpeg needs to open a camera or screen varies from one recording to the next.
 - **Camera offset.** `camera_offset_seconds` in `sync.json` is the correction applied when `final.mp4` is made. It starts at `0`, so nothing is shifted until you set it. It moves the presenter's video and microphone together, relative to the screen and system audio. **Positive** values delay the presenter (they appear later), **negative** values make the presenter earlier.
 
@@ -304,27 +369,214 @@ The offset is applied to the new `final.mp4` and saved to the session's `sync.js
 
 ## Install
 
+Get the code, then use the launcher, which does the rest of the setup for you:
+
 ```bash
 git clone <your-repo-url> soul-screen-recorder
 cd soul-screen-recorder
+./run.sh
+```
+
+On its first run `./run.sh` creates the `venv/` virtual environment and installs `requirements.txt`. On later runs it only installs again when `requirements.txt` has changed. Before starting the app it also checks that:
+
+- `python3` is version 3.9 or newer and has Tkinter. If not, it stops and suggests `brew install python python-tk`.
+- `ffmpeg` is installed (on your `PATH`, or in `/opt/homebrew/bin` or `/usr/local/bin`). If not, it stops and suggests `brew install ffmpeg` and `brew install --cask blackhole-2ch`.
+
+If your copy of the project lost the executable permission (for example after downloading it as a zip file), run `chmod +x run.sh` once, or start it with `bash run.sh`. You can run it from any folder, for example `~/soul-screen-recorder/run.sh`, because it first moves to the project folder itself.
+
+To set everything up by hand instead:
+
+```bash
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+### Python dependencies
+
+The app uses only the Python standard library (including Tkinter), so `requirements.txt` currently lists no packages and `pip install -r requirements.txt` finishes without installing anything. Keep that step in your setup anyway: it makes the command the same if a package is ever added. The tools that do the real work, `ffmpeg` and the BlackHole driver, are not Python packages and are installed with Homebrew (see [Install ffmpeg and BlackHole](#install-ffmpeg-and-blackhole)). If the app reports that Tkinter is missing, see [Requirements](#requirements).
+
 ## Run
 
 ```bash
-python3 main.py
+./run.sh
 ```
 
-A small window opens with a status indicator, one button and a **Devices** section for choosing the camera, microphone and screen (all on **Auto-detect** by default; see [Choosing devices](#choosing-devices)). Closing the window during a recording asks for confirmation and saves the raw files before quitting.
+This is the one-command way to run the app (see [Install](#install) for what it does the first time). If you set up the virtual environment by hand, `python3 main.py` starts the app too. Anything you add after `./run.sh` is passed on to `main.py`.
+
+A small window opens with a status indicator, one button and a **Devices** section for choosing the camera, microphone and screen (all on **Auto-detect** by default; see [Choosing devices](#choosing-devices)) and a **Settings** section for the presenter size and corner, the output folder and the video quality (see [Settings](#settings)). Closing the window during a recording asks for confirmation and saves the raw files before quitting.
+
+## Packaged app (optional)
+
+Instead of starting the app from a terminal, you can build a normal macOS app, **Soul Screen Recorder.app**, that opens with a double-click. This is optional: `./run.sh` does everything the packaged app does.
+
+### Build it
+
+From the project folder, on a Mac:
+
+```bash
+./build_app.sh
+```
+
+The script checks for Python with Tkinter, reuses the `venv/` folder from `./run.sh`, installs the build tool (py2app, listed in `requirements-build.txt`, so `requirements.txt` still lists no packages), builds the app with `setup.py` and signs it (ad hoc, no developer account needed). The result is `dist/Soul Screen Recorder.app`. Building takes about a minute. If the script is not executable, run `chmod +x build_app.sh` or start it with `bash build_app.sh`.
+
+If the build fails, the script shows the end of the log and keeps the full log in `build.log`. To build by hand instead:
+
+```bash
+pip install -r requirements-build.txt
+python3 setup.py py2app
+```
+
+### Open it
+
+Double-click the app in Finder, or run `open "dist/Soul Screen Recorder.app"`. You can drag it to **Applications** to keep it. Because it is not signed by an Apple developer account, macOS may say it is from an unidentified developer the first time: right-click the app, choose **Open**, then click **Open**.
+
+The app does not contain ffmpeg or BlackHole. Install them as described in [Install ffmpeg and BlackHole](#install-ffmpeg-and-blackhole) and set up the Multi-Output Device in [Set up system audio](#set-up-system-audio-multi-output-device). Apps opened from Finder do not have Homebrew on their `PATH`, so the app also looks for ffmpeg in `/opt/homebrew/bin` and `/usr/local/bin` (see [How capture works](#how-capture-works)).
+
+### Privacy usage descriptions
+
+macOS only lets an app use the camera and microphone if the app says why. `setup.py` puts these descriptions in the app's `Info.plist`, and macOS shows them in its permission prompts:
+
+| Key | Text shown |
+|-----|------------|
+| `NSCameraUsageDescription` | Soul Screen Recorder records your camera so you can appear as the presenter in the picture-in-picture video. |
+| `NSMicrophoneUsageDescription` | Soul Screen Recorder records your microphone so your voice is included in the recording. |
+| `NSScreenCaptureUsageDescription` | Soul Screen Recorder records your screen (and the system audio played through BlackHole) as the main video. |
+
+The `Info.plist` also sets the bundle identifier (`com.soulscreenrecorder.app`) and the minimum macOS version (13.0). To change any of these, edit `setup.py` and build again.
+
+### Permissions for the packaged app
+
+The permissions belong to the app itself, not to Terminal or your code editor:
+
+1. The first time you record, macOS asks for **Camera** and **Microphone** access. Click **Allow**.
+2. For the screen, open **System Settings > Privacy & Security > Screen & System Audio Recording**, turn on **Soul Screen Recorder**, then quit and reopen the app. If it is not in the list, click **Record** once so macOS adds it, or add it with the **+** button.
+3. The window's **Permissions** note and **Open Privacy Settings** button work as before (see [Permission check](#permission-check)); in the packaged app they refer to Soul Screen Recorder.
+
+Your device choices and Settings are saved in the same files as when you run from source (see [Where your choice is saved](#where-your-choice-is-saved) and [Where your settings are saved](#where-your-settings-are-saved)), so both ways of starting the app share them.
+
+### Packaged app troubleshooting
+
+- **"Soul Screen Recorder cannot be opened" or "unidentified developer".** Right-click the app, choose **Open**, then click **Open** (see above).
+- **The build fails.** Read the lines the script prints and `build.log`. Check that `python3 -c "import tkinter"` works (`brew install python-tk` for Homebrew Python), then run `./build_app.sh` again; it always starts from a clean `build/` and `dist/`.
+- **macOS asks for permissions again after I rebuilt the app.** Each build is a new copy of the app. If a permission seems stuck, turn it off and on again for **Soul Screen Recorder** in System Settings > Privacy & Security, then reopen the app.
+- **The screen video shows only the wallpaper.** Screen Recording is off for the app. Turn it on and reopen the app (see above).
+- **Recordings are not where I expect.** Unless you chose a folder in **Settings**, the packaged app saves to `~/Movies/Soul Screen Recorder` (the `recordings/` folder of a source run is relative to where you start it, which for a packaged app would be inside the app). Choose another folder with **Browse...** if you prefer (see [Output folder](#output-folder)).
+- **The app says ffmpeg was not found.** Install it with `brew install ffmpeg`. A rebuild is not needed.
 
 ## How to use
 
 1. Click **Record** to start a recording. The status briefly shows **Starting...** while the devices are set up, then the button changes to **Stop**.
 2. Click **Stop** to finish. The app finalizes the two raw files and creates `final.mp4` while the button is disabled. Long recordings take longer to combine.
 3. When processing finishes, the status shows **Done** and the button returns to **Record** so you can start again.
+
+## Acceptance test: three playable files
+
+Clicking **Record** and then **Stop** must produce three playable files in a timestamped folder. To check this on your Mac:
+
+1. Start the app (`./run.sh`, or open the packaged app) and make sure the status is **Idle**, a Multi-Output Device is selected as the sound output, and the permissions are on.
+2. Click **Record**. Wait for **Recording...**, then talk for about 10 seconds and play some sound or a video so there is something to hear on the system audio.
+3. Click **Stop** and wait until the status shows **Done**. The message under it names the session folder, for example `recordings/2026-10-21_14-46`.
+4. Check the folder with the verification tool:
+
+   ```bash
+   python3 -m recorder.verify recordings/2026-10-21_14-46
+   ```
+
+   It prints one line per file and exits with status 0 only if all three pass:
+
+   ```
+   Session: recordings/2026-10-21_14-46
+     [PASS] camera.mp4 is playable (0:12)
+     [PASS] screen.mp4 is playable (0:12)
+     [PASS] final.mp4 is playable (0:12)
+   All 3 files are playable.
+   ```
+
+5. Open the three files in QuickTime Player or VLC to see and hear them yourself. The tool proves that each file opens and its video decodes; run it again with `--audio` to also measure the sound levels (see [Acceptance test: final video quality](#acceptance-test-final-video-quality)), and listen for your voice (in `camera.mp4` and `final.mp4`) and the system audio (in `screen.mp4` and `final.mp4`).
+
+### What the check does
+
+For each of `camera.mp4`, `screen.mp4` and `final.mp4`, `recorder/verify.py` checks that the file exists, is not empty, opens in ffmpeg, has a video stream and that its first video frame decodes. It only reads the files and never changes them. A failed file gets a plain-words reason: missing, empty, cannot be opened and may be unplayable, no video stream, or the video could not be decoded.
+
+### What Done guarantees
+
+- When you click **Stop**, `camera.mp4` and `screen.mp4` are checked before compositing starts (see [Reliable file output](#reliable-file-output)).
+- After compositing, `final.mp4` is checked as well.
+- The **Done** status is shown only when all of that succeeded, so **Done** always means three playable files in the timestamped folder. If anything fails, the **Error** status says which file and why, and the raw files are kept.
+
+### Unit tests
+
+The naming of the session folders and the verification (with a fake ffmpeg, so they run anywhere, also without a camera) are covered by tests that use only the Python standard library:
+
+```bash
+python3 -m unittest discover -s tests -v
+```
+
+They check that each session gets a timestamped folder (with `-2`, `-3` ... if two start in the same minute), that the packaged app uses `~/Movies/Soul Screen Recorder` by default, and that missing, empty, index-less, audio-only and undecodable files are all reported as failures.
+
+### If the check fails
+
+- **`camera.mp4` or `screen.mp4` fails.** The capture did not finish cleanly. See [Reliable file output](#reliable-file-output) and [Error messages](#error-messages); the fragmented format usually keeps what was recorded.
+- **Only `final.mp4` fails.** Create it again with `python3 -m recorder.recomposite <session folder>` and run the check again.
+- **"ffmpeg was not found".** Install it with `brew install ffmpeg`.
+
+## Acceptance test: final video quality
+
+The final video must show the presenter in the bottom-right corner, with the microphone and the system audio both clearly audible and in sync. Record a test session as in [Acceptance test: three playable files](#acceptance-test-three-playable-files), talking and playing some sound while you record, then:
+
+### Manual checklist
+
+1. Play `final.mp4` in QuickTime Player or VLC.
+2. **Layout.** The presenter sits in the bottom-right corner, about 320 px wide and 20 px from the edges of the video (or the size and corner chosen in [Settings](#settings)); the screen is the main video.
+3. **Audio.** Both your voice (the microphone) and whatever the Mac was playing (the system audio) are clearly audible in the final video.
+4. **Sync (clap test).** Clap your hands once in view of the camera at the very moment something visible and audible happens on screen (for example a click sound with a flash), near the start and again near the end for a long recording. In `final.mp4` the clap and the screen event happen together (see [Measuring an offset with a clap marker](#measuring-an-offset-with-a-clap-marker)).
+
+### What the verify tool reports about audio levels
+
+Run the verification tool with the `--audio` option:
+
+```bash
+python3 -m recorder.verify recordings/2026-10-21_14-46 --audio
+```
+
+Besides the playability lines, `--audio` measures the sound in each file with ffmpeg's volumedetect filter (mean and peak level) and prints one audio line per file:
+
+- `final.mp4 audio (mic + system audio)` must have an audio track that is **not silent**: a missing or silent track is a `[FAIL]` line and fails the check, and a quiet track is a `[WARN]` that still passes.
+- `camera.mp4 audio (microphone)` and `screen.mp4 audio (system audio)` are reported as audible, quiet or silent. Silence there is only a `[WARN]`: nothing may have been playing, or nobody may have spoken, during the test.
+
+For example:
+
+```
+Session: recordings/2026-10-21_14-46
+  [PASS] camera.mp4 is playable (0:12)
+  [WARN] camera.mp4 audio (microphone) is quiet (mean -35.4 dB, peak -22.0 dB); raise the volume of the source
+  [PASS] screen.mp4 is playable (0:12)
+  [PASS] screen.mp4 audio (system audio) is audible (mean -18.1 dB, peak -3.2 dB)
+  [PASS] final.mp4 is playable (0:12)
+  [PASS] final.mp4 audio (mic + system audio) is audible (mean -16.9 dB, peak -2.8 dB)
+All 3 files are playable.
+The final video's audio is audible.
+Check the WARN lines above.
+```
+
+The tool still exits with status 0 only when everything passed, so a silent `final.mp4` audio track fails it.
+
+### Fixing quiet or out-of-sync audio
+
+- **The audio is quiet.** Move closer to the microphone or raise its input level, and play the system sound louder. Check that the Multi-Output Device includes BlackHole 2ch and is selected as the output (see [Set up system audio (Multi-Output Device)](#set-up-system-audio-multi-output-device)). A quiet track passes with a `WARN`; a silent `final.mp4` track fails, which usually means one of the sources was silent or the Multi-Output Device was not set up.
+- **Your voice and the system audio are not in step with each other.** When the final video is made, both audio inputs are resampled to one shared rate with timestamp correction before they are mixed, so they stay aligned over long recordings. If a constant gap remains, correct it with a camera offset: measure it with the clap method and re-create the final video with `python3 -m recorder.recomposite <session folder> --camera-offset <seconds>` (see [Applying the offset](#applying-the-offset)).
+- **The gap grows over the recording (drift).** One offset value cannot correct drift. Tick **Drift Correction** for BlackHole 2ch in the Multi-Output Device (see [System audio troubleshooting](#system-audio-troubleshooting)) and record again.
+
+### Unit tests
+
+The final video's layout and audio are covered by `tests/test_final_quality.py`, which uses only the Python standard library (no real ffmpeg needed). They check that the presenter overlay lands in the bottom-right corner with its margin by default and in each of the four corners when chosen, that the microphone and system audio are both mixed with `amix` after being resampled to one rate, that a camera offset shifts the presenter's video and microphone in the filter graph, and that the audio levels parsed from volumedetect are classified as audible, quiet or silent.
+
+They run with the same command as the other tests:
+
+```bash
+python3 -m unittest discover -s tests -v
+```
 
 ## Status indicators
 
@@ -340,26 +592,35 @@ A small window opens with a status indicator, one button and a **Devices** secti
 ## Project layout
 
 ```
+run.sh                   One-command launcher: creates venv/, installs requirements.txt, checks Tkinter and ffmpeg, starts main.py
+build_app.sh             One-command build of the double-clickable .app (dist/Soul Screen Recorder.app) with py2app
+setup.py                 py2app configuration: app name, bundle identifier, minimum macOS version and the Camera/Microphone/Screen Recording usage descriptions
 main.py                  Entry point: creates the controller and window
 recorder/
   state.py               Recording states (idle, starting, recording, processing, done, error) and their label/color/button styles
   controller.py          Record/Stop state machine; runs start-up, stop and compositing on background threads; lists and saves device choices; notifies the UI of changes
   devices.py             Finds the camera, microphone, screen and BlackHole devices; auto-picks real devices and honours chosen names
   device_settings.py     Loads and saves the Devices dropdown choices (devices.json in Application Support)
+  app_settings.py        Loads and saves the Settings choices: presenter size and corner, output folder, video quality (settings.json in Application Support)
   encoding.py            Chooses the video encoder: h264_videotoolbox hardware encoding, or libx264 if unavailable
   audio_output.py        Detects the current sound output (Multi-Output Device, BlackHole only, or plain output)
   permissions.py         Detects missing Camera, Microphone and Screen Recording access (ctypes, no extra packages), builds the fix instructions and opens the matching privacy pane
   errors.py              Friendly error messages (ffmpeg missing, BlackHole missing, device not found, low or full disk) and the translation of raw ffmpeg log text and system errors into them
   capture.py             Starts and stops the two ffmpeg captures; writes fragmented MP4s and verifies them after stop
-  session.py             Creates the timestamped session folder
+  session.py             Creates the timestamped session folder (default folder: recordings/, or ~/Movies/Soul Screen Recorder in the packaged app)
+  verify.py              Checks that a session holds three playable files (camera, screen, final); also python3 -m recorder.verify <session folder>
   sync.py                Reads and writes a session's sync.json (launch gap and camera offset)
   compositor.py          Builds final.mp4: PiP overlay and mixed audio via ffmpeg, with an optional camera offset
   recomposite.py         Command-line tool to re-composite an existing session folder (optional --camera-offset)
 ui/
   main_window.py         Tkinter window: status indicator, Record/Stop button, Permissions note with Open Privacy Settings button, Devices dropdowns, safe close handling that keeps the window responsive
+tests/
+  test_verify.py         Unit tests (standard library unittest) for the session folders and the playable-file check, using a fake ffmpeg
+  test_final_quality.py  Unit tests (standard library unittest) for the final video's overlay layout, audio mix/resampling and the audio level checks
 docs/
   screencapturekit-evaluation.md   Evaluation of ScreenCaptureKit as a driver-free alternative to BlackHole
 requirements.txt         Dependencies (none required yet)
+requirements-build.txt   Build-only dependency for the packaged app (py2app)
 ```
 
 ## How it works
@@ -372,5 +633,5 @@ requirements.txt         Dependencies (none required yet)
 - Before anything else, `_start_capture` checks the Camera, Microphone and Screen Recording permissions through `recorder/permissions.py` and fails with the exact fix steps if one is turned off. The window runs the same check in a background thread at startup, when it regains focus and after each recording, and shows the **Permissions** note with an **Open Privacy Settings** button while something is missing (see Permission check).
 - Any device, session, capture or compositing failure (and any unexpected exception) goes through `recorder/errors.py` before it is shown as the **Error** status: known problems such as a missing device, a busy device or a full disk are recognised in ffmpeg's log and explained with a fix, and the window shows the first sentence as a heading with the fix steps below it (see Error messages).
 - Both the captures and the final composite get their video encoder arguments from `recorder/encoding.py`, which prefers hardware encoding and falls back to `libx264` (see Low CPU use).
-- After Stop, `_process` runs in the background thread and calls `compositor.composite()`, which runs ffmpeg with an overlay filter (presenter scaled to about 320 px, 20 px from the bottom-right corner) and mixes the microphone from `camera.mp4` with the system audio from `screen.mp4`. The raw files are never modified.
+- After Stop, `_process` runs in the background thread and calls `compositor.composite()`, which runs ffmpeg with an overlay filter (presenter scaled to the width chosen in Settings, about 320 px by default, 20 px from the chosen corner, bottom right by default) and mixes the microphone from `camera.mp4` with the system audio from `screen.mp4`. The raw files are never modified.
 - The two captures are launched back to back and the measured launch gap is saved to `sync.json` after a clean stop. When compositing, the controller passes the session's saved `camera_offset_seconds` to the compositor, which shifts the presenter's video and microphone before the overlay and mix (see Audio/video sync).

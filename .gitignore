@@ -12,6 +12,8 @@ __pycache__/
 *.egg-info/
 build/
 dist/
+.eggs/
+build.log
 
 # macOS
 .DS_Store

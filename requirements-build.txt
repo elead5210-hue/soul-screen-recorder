@@ -1,0 +1,11 @@
+# soul-screen-recorder - build-only dependencies
+#
+# Only needed to build the double-clickable .app (see build_app.sh). Running
+# the app from source (./run.sh) needs none of this; see requirements.txt.
+#
+# Build the app with:  ./build_app.sh
+# or by hand:          pip install -r requirements-build.txt
+#                      python3 setup.py py2app
+
+py2app>=0.28
+setuptools>=65
