@@ -17,11 +17,17 @@ them macOS stops a packaged app from using the camera and microphone.
 
 from setuptools import setup
 
+# The supported platform is defined once, in recorder/compat.py, so the app,
+# the startup check and this Info.plist always agree. compat.py only uses the
+# standard library, so importing it here is safe.
+from recorder.compat import MIN_MACOS_TEXT
+
 APP_NAME = "Soul Screen Recorder"
 BUNDLE_IDENTIFIER = "com.soulscreenrecorder.app"
 VERSION = "1.0.0"
-# The oldest macOS the app is meant to run on (see the README).
-MINIMUM_MACOS = "13.0"
+# The oldest macOS the app is meant to run on (see the README). Taken from
+# recorder.compat.MIN_MACOS, the same minimum the source version checks.
+MINIMUM_MACOS = MIN_MACOS_TEXT
 
 APP = ["main.py"]
 

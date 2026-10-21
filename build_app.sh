@@ -7,6 +7,12 @@
 # virtual environment as run.sh, so the first build also sets that up. The
 # build tools (py2app) come from requirements-build.txt; running the app from
 # source (./run.sh) never needs them.
+#
+# The app needs macOS 13 (Ventura) or newer. Which processors it runs on
+# depends on the Python it is built with: a universal2 Python (for example
+# the python.org installer) gives an app for Apple Silicon and Intel Macs, an
+# arm64 or x86_64 Python gives an app for that processor only. The script
+# detects this and tells you before building.
 
 set -euo pipefail
 
@@ -86,6 +92,61 @@ echo "Installing the build tools (py2app) ..."
 
 # ---- build ------------------------------------------------------------------
 
+# Which Macs can the app run on? py2app copies the Python it is built with
+# into the app, so the answer is that Python's architecture: universal2 runs
+# on both kinds of Mac, arm64 only on Apple Silicon, x86_64 on Intel (and on
+# Apple Silicon through Rosetta).
+BUILD_MACHINE="Intel"
+if [ "$(sysctl -n hw.optional.arm64 2>/dev/null || true)" = "1" ] ||
+    [ "$(uname -m)" = "arm64" ]; then
+    BUILD_MACHINE="Apple Silicon"
+fi
+
+PYTHON_ARCHS=""
+PYTHON_BIN="$("$PYTHON" -c 'import os, sys; print(os.path.realpath(sys.executable))' 2>/dev/null || true)"
+if [ -n "$PYTHON_BIN" ] && command -v lipo >/dev/null 2>&1; then
+    # Prints "arm64", "x86_64" or "x86_64 arm64" (universal).
+    PYTHON_ARCHS="$(lipo -archs "$PYTHON_BIN" 2>/dev/null || true)"
+fi
+if [ -z "$PYTHON_ARCHS" ]; then
+    PYTHON_ARCHS="$("$PYTHON" -c 'import platform; print(platform.machine())' 2>/dev/null || true)"
+fi
+
+APP_ARCH_WARNING=""
+case " $PYTHON_ARCHS " in
+    *" arm64 "*" x86_64 "*|*" x86_64 "*" arm64 "*)
+        APP_RUNS_ON="Apple Silicon and Intel Macs (universal)"
+        ;;
+    *" arm64 "*)
+        APP_RUNS_ON="Apple Silicon Macs only"
+        APP_ARCH_WARNING="Warning: this Python is arm64 only, so the app will not open on Intel Macs.
+To build an app for both kinds of Mac, install the universal2 Python from
+python.org, then delete $VENV_DIR/ (rm -rf $VENV_DIR) and run ./build_app.sh again."
+        ;;
+    *" x86_64 "*)
+        APP_RUNS_ON="Intel Macs, and Apple Silicon Macs through Rosetta"
+        APP_ARCH_WARNING="Warning: this Python is x86_64 (Intel) only, so the app will be Intel-only
+and will run through Rosetta on Apple Silicon Macs, using more CPU."
+        if [ "$BUILD_MACHINE" = "Apple Silicon" ]; then
+            APP_ARCH_WARNING="$APP_ARCH_WARNING
+This Mac has an Apple Silicon chip: for a native app, install an arm64 Python
+(brew install python python-tk puts it in /opt/homebrew) or the universal2
+Python from python.org, then delete $VENV_DIR/ (rm -rf $VENV_DIR) and run
+./build_app.sh again."
+        fi
+        ;;
+    *)
+        APP_RUNS_ON="unknown (the Python's architecture could not be read)"
+        ;;
+esac
+
+echo "Build machine: $BUILD_MACHINE. Python architecture: ${PYTHON_ARCHS:-unknown}."
+echo "The app will run on: $APP_RUNS_ON."
+if [ -n "$APP_ARCH_WARNING" ]; then
+    echo "$APP_ARCH_WARNING"
+fi
+echo ""
+
 # Start from a clean slate: stale files from an earlier build can end up in
 # the new app.
 rm -rf build dist
@@ -112,6 +173,7 @@ fi
 cat <<EOF
 
 Built: $PROJECT_DIR/$APP_PATH
+Runs on: macOS 13 (Ventura) or newer, on $APP_RUNS_ON.
 
 To use it:
   1. Open it:  open "$APP_PATH"

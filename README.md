@@ -20,8 +20,8 @@ Prefer an app you can double-click? See [Packaged app (optional)](#packaged-app-
 
 ## Requirements
 
-- macOS 13 or newer (recommended)
-- Python 3.9 or newer with Tkinter
+- macOS 13 (Ventura) or newer, on an Apple Silicon or an Intel Mac (see [Compatibility](#compatibility))
+- Python 3.9 or newer with Tkinter (Tk 8.6 or newer; the Python that ships with macOS is too old, see [Compatibility](#compatibility))
 - No Python packages are needed for the current version
 - `ffmpeg` (external dependency, installed with Homebrew)
 - The BlackHole 2ch audio driver, for system audio capture
@@ -31,6 +31,80 @@ Tkinter is included with the python.org installer. If you use Homebrew Python, i
 ```bash
 brew install python-tk
 ```
+
+## Compatibility
+
+| | Supported |
+|---|-----------|
+| **macOS** | macOS 13 (Ventura) or newer. macOS 26 (Tahoe) is the newest version the app is tested on; newer releases are expected to work. |
+| **Mac** | Apple Silicon (M1 and later) and Intel Macs |
+| **Python** | 3.9 or newer, with Tkinter on Tk 8.6 or newer |
+| **Packaged app** | Same macOS minimum; see [What the packaged app runs on](#what-the-packaged-app-runs-on) for the processors |
+
+The supported platform is defined in one place, `recorder/compat.py`. The startup check, `./run.sh`, the packaged app's `Info.plist` and `python3 -m recorder.compat` all use it, so they always agree.
+
+### Apple Silicon and Intel
+
+The app itself is plain Python and `ffmpeg` with VideoToolbox hardware encoding (see [Low CPU use](#low-cpu-use)), so it runs the same way on both kinds of Mac. The only difference is where Homebrew installs things:
+
+| Mac | Homebrew folder | ffmpeg |
+|-----|-----------------|--------|
+| Apple Silicon | `/opt/homebrew` | `/opt/homebrew/bin/ffmpeg` |
+| Intel | `/usr/local` | `/usr/local/bin/ffmpeg` |
+
+The app looks for ffmpeg on your `PATH` and in both folders, and `./run.sh` prints the install hints that match your Mac.
+
+An Intel build of Python on an Apple Silicon Mac runs through Rosetta. That works, but it uses more CPU than a native build, so the app reports it as a note (never as a problem that stops you). To get a native Python, install it with Homebrew (`brew install python python-tk`, which lives in `/opt/homebrew` on Apple Silicon), delete the old `venv/` folder (`rm -rf venv`) and run `./run.sh` again. If Terminal itself runs under Rosetta, select it in Finder, choose File > Get Info and untick **Open using Rosetta**.
+
+### Python and Tk
+
+The window needs Tk 8.6 or newer. The Python that comes with macOS (`/usr/bin/python3`) uses Tk 8.5, which draws blank or broken windows on current macOS. Use a Python from Homebrew (`brew install python python-tk`) or from python.org, which both include Tk 8.6.
+
+### What the startup check reports
+
+The app checks the platform before the window opens (`./run.sh` runs the same checks before starting Python). Anything that cannot be read, for example the macOS version on an unusual setup, is treated as unknown and never stops you.
+
+| Finding | What happens |
+|---------|--------------|
+| macOS older than 13 | A warning dialog explains the problem and how to update. You can quit, or choose to open the app anyway. If you do, clicking **Record** shows the same message instead of recording. |
+| Tk older than 8.6 | A warning dialog explains that the window may be drawn blank or broken and how to install a newer Python. You can quit or open the app anyway. |
+| Intel Python on an Apple Silicon Mac (Rosetta) | No dialog. `./run.sh` and `python3 -m recorder.compat` print a note with the steps for a native Python. |
+| macOS newer than the versions tested | No dialog. `python3 -m recorder.compat` prints a note; nothing needs to be done unless something goes wrong. |
+| The macOS version cannot be determined | No dialog. The app carries on, and ffmpeg or macOS report any real problem. |
+
+To see the report for your Mac at any time, run this from the project folder:
+
+```bash
+python3 -m recorder.compat
+```
+
+It prints a one-line summary and any problems with the steps to fix them, and exits with status 0 unless a problem rules your setup out:
+
+```
+macOS 14.5 (Sonoma), Apple Silicon, Tk 8.6
+This computer meets the requirements.
+```
+
+### What the packaged app runs on
+
+The packaged app declares macOS 13.0 as its minimum (`LSMinimumSystemVersion`, taken from `recorder/compat.py`). Which processors it runs on depends on the Python it is built with, because py2app copies that Python into the app:
+
+| Python used to build | The app runs on |
+|----------------------|-----------------|
+| universal2 (for example the python.org installer) | Apple Silicon and Intel Macs |
+| arm64 (for example Homebrew on Apple Silicon) | Apple Silicon Macs only |
+| x86_64 (for example Homebrew in `/usr/local`) | Intel Macs, and Apple Silicon Macs through Rosetta |
+
+`./build_app.sh` detects this and prints which Macs the app will run on, with a warning when it is Apple Silicon-only or Intel-only. To share the app with both kinds of Mac, build it with the universal2 Python from python.org.
+
+### Compatibility troubleshooting
+
+- **A dialog says macOS is too old.** Update in System Settings > General > Software Update (on macOS 12 and older: Apple menu > System Preferences > Software Update). If no update to macOS 13 or newer is offered, this Mac is too old to record with this app.
+- **A dialog or `./run.sh` says Tk is too old, or the window is blank.** You are using the Python that comes with macOS. Install a newer one with `brew install python python-tk`, open a new Terminal window, delete the `venv/` folder (`rm -rf venv`) and run `./run.sh` again.
+- **The packaged app does not open on an Intel Mac.** It was built with an arm64-only Python. Build it again with the universal2 Python from python.org (see above).
+- **Everything is slow on an Apple Silicon Mac.** Check `python3 -m recorder.compat`: if it says Intel Python under Rosetta, switch to a native Python (see above).
+
+The checks are covered by `tests/test_compat.py`, which needs no Mac (see [Unit tests](#unit-tests)).
 
 ## Install ffmpeg and BlackHole
 
@@ -379,7 +453,8 @@ cd soul-screen-recorder
 
 On its first run `./run.sh` creates the `venv/` virtual environment and installs `requirements.txt`. On later runs it only installs again when `requirements.txt` has changed. Before starting the app it also checks that:
 
-- `python3` is version 3.9 or newer and has Tkinter. If not, it stops and suggests `brew install python python-tk`.
+- The Mac runs macOS 13 or newer. If not, it stops and explains how to update. It also detects Apple Silicon vs Intel, so the Homebrew hints point at the right folder (`/opt/homebrew` or `/usr/local`), and it prints a note when Python runs under Rosetta (see [Compatibility](#compatibility)).
+- `python3` is version 3.9 or newer and has Tkinter on Tk 8.6 or newer. If not, it stops and suggests `brew install python python-tk`.
 - `ffmpeg` is installed (on your `PATH`, or in `/opt/homebrew/bin` or `/usr/local/bin`). If not, it stops and suggests `brew install ffmpeg` and `brew install --cask blackhole-2ch`.
 
 If your copy of the project lost the executable permission (for example after downloading it as a zip file), run `chmod +x run.sh` once, or start it with `bash run.sh`. You can run it from any folder, for example `~/soul-screen-recorder/run.sh`, because it first moves to the project folder itself.
@@ -443,7 +518,7 @@ macOS only lets an app use the camera and microphone if the app says why. `setup
 | `NSMicrophoneUsageDescription` | Soul Screen Recorder records your microphone so your voice is included in the recording. |
 | `NSScreenCaptureUsageDescription` | Soul Screen Recorder records your screen (and the system audio played through BlackHole) as the main video. |
 
-The `Info.plist` also sets the bundle identifier (`com.soulscreenrecorder.app`) and the minimum macOS version (13.0). To change any of these, edit `setup.py` and build again.
+The `Info.plist` also sets the bundle identifier (`com.soulscreenrecorder.app`) and the minimum macOS version (13.0, taken from `MIN_MACOS_TEXT` in `recorder/compat.py` so it always matches the check the source version does). To change the others, edit `setup.py` and build again.
 
 ### Permissions for the packaged app
 
@@ -592,10 +667,10 @@ python3 -m unittest discover -s tests -v
 ## Project layout
 
 ```
-run.sh                   One-command launcher: creates venv/, installs requirements.txt, checks Tkinter and ffmpeg, starts main.py
+run.sh                   One-command launcher: creates venv/, installs requirements.txt, checks macOS 13+, the processor, Tkinter (Tk 8.6+) and ffmpeg, starts main.py
 build_app.sh             One-command build of the double-clickable .app (dist/Soul Screen Recorder.app) with py2app
 setup.py                 py2app configuration: app name, bundle identifier, minimum macOS version and the Camera/Microphone/Screen Recording usage descriptions
-main.py                  Entry point: creates the controller and window
+main.py                  Entry point: checks the platform (warning dialog for an old macOS or Tk), then creates the controller and window
 recorder/
   state.py               Recording states (idle, starting, recording, processing, done, error) and their label/color/button styles
   controller.py          Record/Stop state machine; runs start-up, stop and compositing on background threads; lists and saves device choices; notifies the UI of changes
@@ -604,6 +679,7 @@ recorder/
   app_settings.py        Loads and saves the Settings choices: presenter size and corner, output folder, video quality (settings.json in Application Support)
   encoding.py            Chooses the video encoder: h264_videotoolbox hardware encoding, or libx264 if unavailable
   audio_output.py        Detects the current sound output (Multi-Output Device, BlackHole only, or plain output)
+  compat.py              The supported platform (macOS 13+, Apple Silicon and Intel, Tk 8.6+) and the check of this Mac; also python3 -m recorder.compat
   permissions.py         Detects missing Camera, Microphone and Screen Recording access (ctypes, no extra packages), builds the fix instructions and opens the matching privacy pane
   errors.py              Friendly error messages (ffmpeg missing, BlackHole missing, device not found, low or full disk) and the translation of raw ffmpeg log text and system errors into them
   capture.py             Starts and stops the two ffmpeg captures; writes fragmented MP4s and verifies them after stop
@@ -617,6 +693,7 @@ ui/
 tests/
   test_verify.py         Unit tests (standard library unittest) for the session folders and the playable-file check, using a fake ffmpeg
   test_final_quality.py  Unit tests (standard library unittest) for the final video's overlay layout, audio mix/resampling and the audio level checks
+  test_compat.py         Unit tests (standard library unittest) for the macOS version minimum, Apple Silicon/Intel/Rosetta detection, the Tk check and the never-raises behaviour
 docs/
   screencapturekit-evaluation.md   Evaluation of ScreenCaptureKit as a driver-free alternative to BlackHole
 requirements.txt         Dependencies (none required yet)
@@ -635,3 +712,4 @@ requirements-build.txt   Build-only dependency for the packaged app (py2app)
 - Both the captures and the final composite get their video encoder arguments from `recorder/encoding.py`, which prefers hardware encoding and falls back to `libx264` (see Low CPU use).
 - After Stop, `_process` runs in the background thread and calls `compositor.composite()`, which runs ffmpeg with an overlay filter (presenter scaled to the width chosen in Settings, about 320 px by default, 20 px from the chosen corner, bottom right by default) and mixes the microphone from `camera.mp4` with the system audio from `screen.mp4`. The raw files are never modified.
 - The two captures are launched back to back and the measured launch gap is saved to `sync.json` after a clean stop. When compositing, the controller passes the session's saved `camera_offset_seconds` to the compositor, which shifts the presenter's video and microphone before the overlay and mix (see Audio/video sync).
+- Before the window opens, `main.py` asks the controller for the platform check from `recorder/compat.py` and shows a warning dialog if macOS is older than 13 or Tk is older than 8.6. `_start_capture` checks the macOS version again before anything else, so an unsupported macOS never starts a recording. A version that cannot be determined never blocks (see Compatibility).

@@ -15,7 +15,11 @@ appears when all three files are playable.
 Before recording, the sound output is checked: system audio is only captured
 (and still audible) when the Mac outputs to a Multi-Output Device that includes
 BlackHole 2ch; otherwise the ERROR state explains how to set that up.
-Before anything else, the Camera, Microphone and Screen Recording permissions
+Before anything else, the macOS version is checked: a version older than the
+supported minimum (see recorder.compat) turns into the ERROR state with update
+steps, while a version that cannot be determined never blocks recording. The UI
+can read the platform details through get_compatibility().
+Then the Camera, Microphone and Screen Recording permissions
 are checked; if one is turned off, the ERROR state explains how to turn it on,
 and the controller lets the UI see what is missing and open the matching
 System Settings pane without touching the permissions module.
@@ -32,6 +36,7 @@ from typing import Callable, List, Optional, Tuple
 from recorder.audio_output import OutputKind, detect_default_output
 from recorder.capture import STOP_TIMEOUT_SECONDS, CaptureError, DualCapture
 from recorder.app_settings import AppSettings, load_app_settings, save_app_settings
+from recorder.compat import CompatibilityResult, check_compatibility
 from recorder.compositor import CompositeError, composite
 from recorder.device_settings import DeviceSettings, load_settings, save_settings
 from recorder.devices import (
@@ -112,6 +117,8 @@ class RecorderController:
         self._shutting_down = False
         # Permissions found turned off by the most recent check.
         self._missing_permissions: Tuple[Permission, ...] = ()
+        # The platform check result, read once on first use.
+        self._compatibility: Optional[CompatibilityResult] = None
 
     # ---- state access -------------------------------------------------
 
@@ -128,6 +135,30 @@ class RecorderController:
     def message(self) -> Optional[str]:
         """Optional detail text (e.g. an error description) for the state."""
         return self._message
+
+    # ---- platform compatibility ---------------------------------------
+
+    def get_compatibility(self, refresh: bool = False) -> CompatibilityResult:
+        """The platform check: macOS version, CPU, Tk, and any problems found.
+
+        The result is read once and then remembered; pass refresh=True to
+        read it again. It is quick (two tiny system commands) and never
+        raises. Use result.summary() for a one-line description of this Mac
+        and result.message() for the problems with their fix steps.
+        """
+        if self._compatibility is None or refresh:
+            self._compatibility = check_compatibility()
+        return self._compatibility
+
+    def _ensure_supported_macos(self) -> None:
+        """Raise CaptureError with update steps if macOS is too old.
+
+        A macOS version that cannot be determined does not block recording:
+        ffmpeg or macOS will report any real problem themselves.
+        """
+        message = self.get_compatibility().macos_message()
+        if message:
+            raise CaptureError(message)
 
     # ---- permissions --------------------------------------------------
 
@@ -362,6 +393,7 @@ class RecorderController:
         SessionError or CaptureError on failure; the caller turns these into
         the ERROR state.
         """
+        self._ensure_supported_macos()
         self._ensure_permissions()
         _check_audio_output()
         # load_settings never raises: a missing or damaged settings file
