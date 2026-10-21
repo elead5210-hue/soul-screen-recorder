@@ -1,0 +1,17 @@
+# Recordings output folder
+recordings/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Python cache and build files
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# macOS
+.DS_Store

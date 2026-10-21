@@ -1,0 +1,1 @@
+"""UI package: the Tkinter main window with the Record/Stop button and status indicator."""

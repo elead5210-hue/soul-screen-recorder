@@ -1,0 +1,15 @@
+# soul-screen-recorder v1 - Python dependencies
+#
+# The core app (Tkinter UI + ffmpeg via subprocess) uses only the Python
+# standard library, so no packages are required to run it.
+# Tkinter ships with the python.org and Homebrew (python-tk) builds of Python.
+#
+# External dependency (NOT installable with pip): capture requires ffmpeg on
+# your PATH, built with avfoundation and h264_videotoolbox support.
+# Install it with:  brew install ffmpeg
+# System audio capture also needs the BlackHole 2ch driver:
+#   brew install --cask blackhole-2ch
+# Still no Python packages are needed.
+#
+# Optional extras (uncomment if you want a menu bar icon instead of a window):
+# rumps>=0.4.0
