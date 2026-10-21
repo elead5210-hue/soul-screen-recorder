@@ -68,6 +68,17 @@ If you start two recordings within the same minute, the second folder gets a `-2
 
 When a recording finishes, the **Done** status shows the folder it was saved to.
 
+## Reliable file output
+
+Stopping always tries to leave playable MP4 files behind, even when something goes wrong:
+
+- **Clean stop.** On Stop, the app sends `q` to both ffmpeg processes. ffmpeg then flushes its buffers and finishes the files properly. If a process has not exited after 20 seconds, it is terminated, and then force-killed if needed.
+- **Crash-resilient MP4s.** `camera.mp4` and `screen.mp4` are written as fragmented MP4 (a new playable fragment about every 2 seconds). If ffmpeg is force-closed, or the app or the Mac crashes during a recording, everything recorded up to the last fragment stays playable instead of the file being left without its index.
+- **Verification after stop.** Before reporting success, the app checks that both files exist, are not empty, and can be opened by ffmpeg. If a file is missing or unreadable, the **Error** status explains which one, and `final.mp4` is not created from it.
+- **Safe closing.** If you close the window while recording or processing, the app asks for confirmation. If you confirm, it stops the captures cleanly and waits for the files to finish saving (a few seconds) before quitting. `camera.mp4` and `screen.mp4` are kept, but `final.mp4` is not created on quit; create it later with `recorder.recomposite` (see below).
+
+Quitting the app in other ways, such as force-quitting or pressing Ctrl+C in the terminal, cannot stop ffmpeg cleanly. The fragmented format means the recording up to that moment should still be playable.
+
 ## Raw files are kept
 
 Every session folder keeps all three files: `camera.mp4`, `screen.mp4` and `final.mp4`. The raw `camera.mp4` and `screen.mp4` are never modified, deleted or overwritten by the app, including when compositing fails, so you can always create the final video again.
@@ -104,7 +115,7 @@ pip install -r requirements.txt
 python3 main.py
 ```
 
-A small window opens with a status indicator and one button.
+A small window opens with a status indicator and one button. Closing the window during a recording asks for confirmation and saves the raw files before quitting.
 
 ## How to use
 
@@ -130,20 +141,21 @@ recorder/
   state.py               Recording states and their label/color/button styles
   controller.py          Record/Stop state machine; notifies the UI of changes
   devices.py             Finds the camera, microphone, screen and BlackHole devices
-  capture.py             Starts and stops the two ffmpeg captures
+  capture.py             Starts and stops the two ffmpeg captures; writes fragmented MP4s and verifies them after stop
   session.py             Creates the timestamped session folder
   compositor.py          Builds final.mp4: PiP overlay and mixed audio via ffmpeg
   recomposite.py         Command-line tool to re-composite an existing session folder
 ui/
-  main_window.py         Tkinter window: status indicator and Record/Stop button
+  main_window.py         Tkinter window: status indicator, Record/Stop button, safe close handling
 requirements.txt         Dependencies (none required yet)
 ```
 
 ## How it works
 
 - `RecorderController.toggle()` is the single entry point for the button. It starts a recording from Idle, Done, or Error, and stops it from Recording.
-- Processing runs in a background thread, so the window never freezes.
+- Stopping and processing run in a background thread, so the window never freezes while ffmpeg flushes the files.
+- `RecorderController.shutdown()` is called when the window is closed. It stops any running capture cleanly and waits for the files to be finalized before the app exits. It does not create `final.mp4`.
 - The controller notifies the window of every state change, and the window updates the indicator and button accordingly.
-- On Record, `_start_capture` detects the devices, creates the session folder and launches the camera and screen ffmpeg processes back to back. On Stop, `_stop_capture` asks both to finish so the MP4 files are finalized cleanly.
+- On Record, `_start_capture` detects the devices, creates the session folder and launches the camera and screen ffmpeg processes back to back. On Stop, `_stop_capture` asks both to finish so the MP4 files are finalized cleanly, and then checks that each file can be opened before processing continues.
 - Any device, session or capture failure is shown as the **Error** status with a detail message.
 - After Stop, `_process` runs in the background thread and calls `compositor.composite()`, which runs ffmpeg with an overlay filter (presenter scaled to about 320 px, 20 px from the bottom-right corner) and mixes the microphone from `camera.mp4` with the system audio from `screen.mp4`. The raw files are never modified.

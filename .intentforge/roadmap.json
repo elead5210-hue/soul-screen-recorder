@@ -94,13 +94,13 @@
       "feature_id": null,
       "title": "Keep the raw files",
       "summary": "Save each session in a timestamped folder containing camera.mp4, screen.mp4, and final.mp4 so recordings can be re-composited later.",
-      "detail": "{\"planState\":\"tasks_created\",\"planPromptText\":\"Goal: Keep the raw files\\nDescription: Save each session in a timestamped folder containing camera.mp4, screen.mp4, and final.mp4 so recordings can be re-composited later.\\n\\nBelow is the current file tree for this project: one path per line,\\nfollowed by a short content fingerprint (format:\\nL<byte length>:H<8-char hash> - see shared/fingerprint.js if you’ve\\nseen this project before). No file contents are included here.\\n\\nPlan the set of file changes needed to implement the goal above.\\nRespond with ONLY this JSON object, no other text before or after it:\\n{\\n  \\\"tasks\\\": [\\n    {\\n      \\\"path\\\": \\\"components/example/example.js\\\",\\n      \\\"action\\\": \\\"create\\\" | \\\"modify\\\" | \\\"delete\\\",\\n      \\\"description\\\": \\\"one-line description of the change\\\",\\n      \\\"needsFileContent\\\": true,\\n      \\\"needsMetadata\\\": false,\\n      \\\"confident\\\": true\\n    }\\n  ]\\n}\\n\\n- needsFileContent: true unless this task is a plain delete with\\n  nothing else to write.\\n- needsMetadata: true only if this task needs you to author extra\\n  structured data beyond the file’s content (leave false if unsure).\\n- confident: for \\\"modify\\\"/\\\"delete\\\" tasks, whether your memory of\\n  that file’s current content matches the fingerprint shown above.\\n  Always true for \\\"create\\\" tasks (there’s nothing to remember yet).\\n\\nCurrent file tree:\\n.gitignore  L179:H6ae6e29c\\nmain.py  L448:H573b4f86\\nREADME.md  L6998:H16b534ec\\nrecorder/__init__.py  L71:Hf8924643\\nrecorder/capture.py  L7639:H8c68c356\\nrecorder/compositor.py  L6617:H8527977c\\nrecorder/controller.py  L5441:He7d925a9\\nrecorder/devices.py  L5402:H6fa043c8\\nrecorder/session.py  L2468:H663a985c\\nrecorder/state.py  L1560:Hdee2c515\\nrequirements.txt  L680:H230461f9\\nui/__init__.py  L91:He423e5c3\\nui/main_window.py  L3082:H9a8a9550\"}",
+      "detail": "{\"planState\":\"tasks_created\",\"planPromptText\":\"Goal: Keep the raw files\\nDescription: Save each session in a timestamped folder containing camera.mp4, screen.mp4, and final.mp4 so recordings can be re-composited later.\\n\\nBelow is the current file tree for this project: one path per line,\\nfollowed by a short content fingerprint (format:\\nL<byte length>:H<8-char hash> - see shared/fingerprint.js if you’ve\\nseen this project before). No file contents are included here.\\n\\nPlan the set of file changes needed to implement the goal above.\\nRespond with ONLY this JSON object, no other text before or after it:\\n{\\n  \\\"tasks\\\": [\\n    {\\n      \\\"path\\\": \\\"components/example/example.js\\\",\\n      \\\"action\\\": \\\"create\\\" | \\\"modify\\\" | \\\"delete\\\",\\n      \\\"description\\\": \\\"one-line description of the change\\\",\\n      \\\"needsFileContent\\\": true,\\n      \\\"needsMetadata\\\": false,\\n      \\\"confident\\\": true\\n    }\\n  ]\\n}\\n\\n- needsFileContent: true unless this task is a plain delete with\\n  nothing else to write.\\n- needsMetadata: true only if this task needs you to author extra\\n  structured data beyond the file’s content (leave false if unsure).\\n- confident: for \\\"modify\\\"/\\\"delete\\\" tasks, whether your memory of\\n  that file’s current content matches the fingerprint shown above.\\n  Always true for \\\"create\\\" tasks (there’s nothing to remember yet).\\n\\nCurrent file tree:\\n.gitignore  L179:H6ae6e29c\\nmain.py  L448:H573b4f86\\nREADME.md  L6998:H16b534ec\\nrecorder/__init__.py  L71:Hf8924643\\nrecorder/capture.py  L7639:H8c68c356\\nrecorder/compositor.py  L6617:H8527977c\\nrecorder/controller.py  L5441:He7d925a9\\nrecorder/devices.py  L5402:H6fa043c8\\nrecorder/session.py  L2468:H663a985c\\nrecorder/state.py  L1560:Hdee2c515\\nrequirements.txt  L680:H230461f9\\nui/__init__.py  L91:He423e5c3\\nui/main_window.py  L3082:H9a8a9550\",\"pushOutcome\":{\"status\":\"pushed\",\"sha\":\"98c9aa80b70691dd4b0af7ff983e7383f705335f\",\"at\":\"2026-10-21T12:54:24.408Z\"}}",
       "linked_element_ids": [],
       "finalized": false,
       "blocked_by": [],
       "notes": "",
       "createdAt": "2026-10-21T12:40:08.600Z",
-      "updatedAt": "2026-10-21T12:53:17.942Z"
+      "updatedAt": "2026-10-21T12:54:24.436Z"
     },
     {
       "roadmap_node_id": "rmn_8764ed396eadabcf80d0e42e",
@@ -114,13 +114,13 @@
       "feature_id": null,
       "title": "Reliable file output",
       "summary": "Stopping must always finalize the files cleanly, with no corrupt or unplayable MP4s.",
-      "detail": "",
+      "detail": "{\"planState\":\"tasks_created\",\"planPromptText\":\"Goal: Reliable file output\\nDescription: Stopping must always finalize the files cleanly, with no corrupt or unplayable MP4s.\\n\\nBelow is the current file tree for this project: one path per line,\\nfollowed by a short content fingerprint (format:\\nL<byte length>:H<8-char hash> - see shared/fingerprint.js if you’ve\\nseen this project before). No file contents are included here.\\n\\nPlan the set of file changes needed to implement the goal above.\\nRespond with ONLY this JSON object, no other text before or after it:\\n{\\n  \\\"tasks\\\": [\\n    {\\n      \\\"path\\\": \\\"components/example/example.js\\\",\\n      \\\"action\\\": \\\"create\\\" | \\\"modify\\\" | \\\"delete\\\",\\n      \\\"description\\\": \\\"one-line description of the change\\\",\\n      \\\"needsFileContent\\\": true,\\n      \\\"needsMetadata\\\": false,\\n      \\\"confident\\\": true\\n    }\\n  ]\\n}\\n\\n- needsFileContent: true unless this task is a plain delete with\\n  nothing else to write.\\n- needsMetadata: true only if this task needs you to author extra\\n  structured data beyond the file’s content (leave false if unsure).\\n- confident: for \\\"modify\\\"/\\\"delete\\\" tasks, whether your memory of\\n  that file’s current content matches the fingerprint shown above.\\n  Always true for \\\"create\\\" tasks (there’s nothing to remember yet).\\n\\nCurrent file tree:\\n.gitignore  L179:H6ae6e29c\\nmain.py  L448:H573b4f86\\nREADME.md  L8128:H712168c0\\nrecorder/__init__.py  L71:Hf8924643\\nrecorder/capture.py  L7639:H8c68c356\\nrecorder/compositor.py  L6617:H8527977c\\nrecorder/controller.py  L5570:H50346063\\nrecorder/devices.py  L5402:H6fa043c8\\nrecorder/recomposite.py  L3363:H9b3bc8b2\\nrecorder/session.py  L2468:H663a985c\\nrecorder/state.py  L1560:Hdee2c515\\nrequirements.txt  L680:H230461f9\\nui/__init__.py  L91:He423e5c3\\nui/main_window.py  L3082:H9a8a9550\"}",
       "linked_element_ids": [],
       "finalized": false,
       "blocked_by": [],
       "notes": "",
       "createdAt": "2026-10-21T12:40:08.600Z",
-      "updatedAt": "2026-10-21T12:40:08.600Z"
+      "updatedAt": "2026-10-21T12:55:45.466Z"
     },
     {
       "roadmap_node_id": "rmn_f10b87d7bfc2427f1160541a",
@@ -523,6 +523,26 @@
       "updatedAt": "2026-10-21T12:53:33.470Z"
     },
     {
+      "roadmap_node_id": "rmn_a38e8f0b97f0c7acdfc11c4c",
+      "project_id": "9b3183b2-bfd9-4cad-abef-05891f52b874",
+      "parent_roadmap_node_id": "rmn_8764ed396eadabcf80d0e42e",
+      "type": "task",
+      "depth": 2,
+      "locked": false,
+      "status": "done",
+      "order": 0,
+      "feature_id": null,
+      "title": "recorder/capture.py",
+      "summary": "Write crash-resilient fragmented MP4s (frag_keyframe+empty_moov) so a force-closed or interrupted capture still leaves a playable file, and verify each finalized file is readable after stop (ffprobe or ffmpeg -i) before reporting success",
+      "detail": "{\"fileChangeMode\":\"patch\",\"action\":\"modify\",\"description\":\"Write crash-resilient fragmented MP4s (frag_keyframe+empty_moov) so a force-closed or interrupted capture still leaves a playable file, and verify each finalized file is readable after stop (ffprobe or ffmpeg -i) before reporting success\",\"needsFileContent\":true,\"needsMetadata\":false,\"confident\":true,\"fileStatus\":\"done\",\"metadataStatus\":\"not_needed\",\"metadata\":null}",
+      "linked_element_ids": [],
+      "finalized": false,
+      "blocked_by": [],
+      "notes": "",
+      "createdAt": "2026-10-21T12:55:45.126Z",
+      "updatedAt": "2026-10-21T12:57:10.921Z"
+    },
+    {
       "roadmap_node_id": "rmn_10baf0aca3f8b39da83b3397",
       "project_id": "9b3183b2-bfd9-4cad-abef-05891f52b874",
       "parent_roadmap_node_id": "rmn_4774dd81fe9dd4fd59527875",
@@ -601,6 +621,26 @@
       "notes": "",
       "createdAt": "2026-10-21T12:53:17.769Z",
       "updatedAt": "2026-10-21T12:53:53.507Z"
+    },
+    {
+      "roadmap_node_id": "rmn_ac0b68a0a30b6562dabeafbb",
+      "project_id": "9b3183b2-bfd9-4cad-abef-05891f52b874",
+      "parent_roadmap_node_id": "rmn_8764ed396eadabcf80d0e42e",
+      "type": "task",
+      "depth": 2,
+      "locked": false,
+      "status": "done",
+      "order": 1,
+      "feature_id": null,
+      "title": "recorder/controller.py",
+      "summary": "Run the capture stop and finalization on the background thread so waiting for ffmpeg to flush never blocks the UI, and add a shutdown() method that cleanly stops any running capture before the app exits",
+      "detail": "{\"fileChangeMode\":\"patch\",\"action\":\"modify\",\"description\":\"Run the capture stop and finalization on the background thread so waiting for ffmpeg to flush never blocks the UI, and add a shutdown() method that cleanly stops any running capture before the app exits\",\"needsFileContent\":true,\"needsMetadata\":false,\"confident\":true,\"fileStatus\":\"done\",\"metadataStatus\":\"not_needed\",\"metadata\":null}",
+      "linked_element_ids": [],
+      "finalized": false,
+      "blocked_by": [],
+      "notes": "",
+      "createdAt": "2026-10-21T12:55:45.246Z",
+      "updatedAt": "2026-10-21T12:57:53.414Z"
     },
     {
       "roadmap_node_id": "rmn_80f892ac62b81da5f7d64917",
@@ -683,6 +723,26 @@
       "updatedAt": "2026-10-21T12:54:08.492Z"
     },
     {
+      "roadmap_node_id": "rmn_4be655dba03414814fa066d6",
+      "project_id": "9b3183b2-bfd9-4cad-abef-05891f52b874",
+      "parent_roadmap_node_id": "rmn_8764ed396eadabcf80d0e42e",
+      "type": "task",
+      "depth": 2,
+      "locked": false,
+      "status": "done",
+      "order": 2,
+      "feature_id": null,
+      "title": "ui/main_window.py",
+      "summary": "Handle the window close button: if a recording or processing is in progress, ask for confirmation, then call controller.shutdown() so ffmpeg is stopped cleanly and the files are finalized before the window closes",
+      "detail": "{\"fileChangeMode\":\"patch\",\"action\":\"modify\",\"description\":\"Handle the window close button: if a recording or processing is in progress, ask for confirmation, then call controller.shutdown() so ffmpeg is stopped cleanly and the files are finalized before the window closes\",\"needsFileContent\":true,\"needsMetadata\":false,\"confident\":false,\"fileStatus\":\"done\",\"metadataStatus\":\"not_needed\",\"metadata\":null}",
+      "linked_element_ids": [],
+      "finalized": false,
+      "blocked_by": [],
+      "notes": "",
+      "createdAt": "2026-10-21T12:55:45.328Z",
+      "updatedAt": "2026-10-21T13:48:40.679Z"
+    },
+    {
       "roadmap_node_id": "rmn_ac668d758415166ee63f361e",
       "project_id": "9b3183b2-bfd9-4cad-abef-05891f52b874",
       "parent_roadmap_node_id": "rmn_4774dd81fe9dd4fd59527875",
@@ -721,6 +781,26 @@
       "notes": "",
       "createdAt": "2026-10-21T12:43:23.014Z",
       "updatedAt": "2026-10-21T12:49:10.361Z"
+    },
+    {
+      "roadmap_node_id": "rmn_783ae859c9c62cec41d9599a",
+      "project_id": "9b3183b2-bfd9-4cad-abef-05891f52b874",
+      "parent_roadmap_node_id": "rmn_8764ed396eadabcf80d0e42e",
+      "type": "task",
+      "depth": 2,
+      "locked": false,
+      "status": "done",
+      "order": 3,
+      "feature_id": null,
+      "title": "README.md",
+      "summary": "Document how files are finalized safely: clean stop via ffmpeg, crash-resilient MP4s, verification after stop, and clean shutdown when the window is closed during a recording",
+      "detail": "{\"fileChangeMode\":\"patch\",\"action\":\"modify\",\"description\":\"Document how files are finalized safely: clean stop via ffmpeg, crash-resilient MP4s, verification after stop, and clean shutdown when the window is closed during a recording\",\"needsFileContent\":true,\"needsMetadata\":false,\"confident\":true,\"fileStatus\":\"done\",\"metadataStatus\":\"not_needed\",\"metadata\":null}",
+      "linked_element_ids": [],
+      "finalized": false,
+      "blocked_by": [],
+      "notes": "",
+      "createdAt": "2026-10-21T12:55:45.404Z",
+      "updatedAt": "2026-10-21T13:49:06.032Z"
     },
     {
       "roadmap_node_id": "rmn_2c115fa4dd6aeadd94ffbf2c",

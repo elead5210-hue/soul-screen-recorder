@@ -2,8 +2,10 @@
 
 The one-click Record/Stop state machine drives the capture layer: Record
 creates a timestamped session folder, detects the devices and starts the
-camera and screen ffmpeg captures; Stop finalizes both files. Any capture,
-device or session failure is surfaced as the ERROR state with a message.
+camera and screen ffmpeg captures; Stop finalizes both files on a background
+thread, so the UI never waits for ffmpeg to flush. `shutdown()` stops any
+running capture cleanly before the app exits. Any capture, device or session
+failure is surfaced as the ERROR state with a message.
 After Stop, the `_process` hook composites the two raw files into final.mp4
 (screen with the presenter in a bottom-right overlay); a compositing failure
 is also surfaced as the ERROR state, and the raw files are kept.
@@ -12,7 +14,7 @@ is also surfaced as the ERROR state, and the raw files are kept.
 import threading
 from typing import Callable, List, Optional
 
-from recorder.capture import CaptureError, DualCapture
+from recorder.capture import STOP_TIMEOUT_SECONDS, CaptureError, DualCapture
 from recorder.compositor import composite
 from recorder.devices import DeviceError, detect_devices
 from recorder.session import Session, SessionError, create_session
@@ -29,6 +31,12 @@ class RecorderController:
         self._lock = threading.Lock()
         self._session: Optional[Session] = None
         self._capture: Optional[DualCapture] = None
+        self._worker: Optional[threading.Thread] = None
+        # Set whenever no capture is being stopped (cleared while Stop is
+        # waiting for ffmpeg to finalize the files).
+        self._capture_done = threading.Event()
+        self._capture_done.set()
+        self._shutting_down = False
 
     # ---- state access -------------------------------------------------
 
@@ -91,17 +99,23 @@ class RecorderController:
         self._set_state(RecorderState.RECORDING)
 
     def _end_recording(self) -> None:
-        try:
-            self._stop_capture()
-        except Exception as exc:
-            self._set_state(RecorderState.ERROR, str(exc))
-            return
         self._set_state(RecorderState.PROCESSING)
-        # Process off the calling thread so the UI never freezes.
-        threading.Thread(target=self._run_processing, daemon=True).start()
+        self._capture_done.clear()
+        # Stop and finalize off the calling thread so the UI never freezes
+        # while ffmpeg flushes the files.
+        self._worker = threading.Thread(target=self._run_processing, daemon=True)
+        self._worker.start()
 
     def _run_processing(self) -> None:
         try:
+            try:
+                self._stop_capture()
+            finally:
+                self._capture_done.set()
+            if self._shutting_down:
+                # The app is closing: the raw files are finalized and kept,
+                # and can be combined later with recorder.recomposite.
+                return
             self._process()
         except Exception as exc:
             self._set_state(RecorderState.ERROR, str(exc))
@@ -109,6 +123,28 @@ class RecorderController:
         session = self._session
         folder_note = f"Saved to {session.folder}" if session is not None else None
         self._set_state(RecorderState.DONE, folder_note)
+
+    def shutdown(self) -> None:
+        """Cleanly stop any running capture before the app exits.
+
+        If a recording is in progress, both ffmpeg processes are asked to
+        finish so camera.mp4 and screen.mp4 are finalized and playable. If
+        Stop was already clicked, this waits for that finalization to end.
+        final.mp4 is not created on shutdown; use recorder.recomposite for
+        that. Blocks for up to a few seconds while ffmpeg flushes.
+        """
+        self._shutting_down = True
+        with self._lock:
+            capture = self._capture
+            self._capture = None
+        if capture is not None:
+            try:
+                capture.stop()
+            except Exception:
+                # Best effort: the app is closing and there is nowhere
+                # left to show an error.
+                pass
+        self._capture_done.wait(timeout=STOP_TIMEOUT_SECONDS * 2 + 15)
 
     # ---- hooks for the capture/compositing layer ---------------------
 
@@ -134,8 +170,9 @@ class RecorderController:
 
         Raises CaptureError if a file could not be finalized cleanly.
         """
-        capture = self._capture
-        self._capture = None
+        with self._lock:
+            capture = self._capture
+            self._capture = None
         if capture is None:
             raise CaptureError("No recording is in progress.")
         capture.stop()

@@ -5,8 +5,13 @@ Stream B (screen):    screen + BlackHole   -> screen.mp4
 
 Both processes are launched back to back so they start within a fraction
 of a second of each other. They are stopped by writing "q" to ffmpeg's
-stdin, which lets ffmpeg flush and finalize the MP4 (killing it instead
-can leave an unplayable file).
+stdin, which lets ffmpeg flush and finalize the MP4.
+
+The files are written as fragmented MP4 (a playable fragment about every
+two seconds), so even if ffmpeg is force-closed or the app or Mac crashes
+mid-recording, everything recorded so far stays playable instead of the
+file ending up without its index and unplayable. After stopping, each
+file is checked to confirm it can be opened before success is reported.
 """
 
 import subprocess
@@ -23,6 +28,10 @@ STOP_TIMEOUT_SECONDS = 20
 STARTUP_CHECK_SECONDS = 1.5
 
 FRAMERATE = 30
+
+# Fragmented MP4: a new fragment (and keyframe) every couple of seconds.
+FRAGMENT_SECONDS = 2
+MOVFLAGS = "+frag_keyframe+empty_moov+default_base_moof"
 
 
 class CaptureError(Exception):
@@ -110,9 +119,10 @@ def build_camera_command(
         "-framerate", str(FRAMERATE),
         "-i", f"{devices.camera.index}:{devices.microphone.index}",
         "-c:v", "h264_videotoolbox", "-b:v", "4M",
+        "-g", str(FRAMERATE * FRAGMENT_SECONDS),
         "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-b:a", "160k",
-        "-movflags", "+faststart",
+        "-movflags", MOVFLAGS,
         str(output),
     ]
 
@@ -128,11 +138,35 @@ def build_screen_command(
         "-framerate", str(FRAMERATE),
         "-i", f"{devices.screen.index}:{devices.system_audio.index}",
         "-c:v", "h264_videotoolbox", "-b:v", "8M",
+        "-g", str(FRAMERATE * FRAGMENT_SECONDS),
         "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-b:a", "160k",
-        "-movflags", "+faststart",
+        "-movflags", MOVFLAGS,
         str(output),
     ]
+
+
+def _is_playable(ffmpeg: str, path: Path) -> bool:
+    """Quick check that ffmpeg can open the file and finds a video stream.
+
+    This only reads the file's headers, so it is fast even for long
+    recordings. If the check itself cannot run, the file is given the
+    benefit of the doubt.
+    """
+    try:
+        result = subprocess.run(
+            [ffmpeg, "-hide_banner", "-i", str(path)],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return True
+    text = result.stderr.decode("utf-8", errors="replace")
+    if "moov atom not found" in text or "Invalid data found" in text:
+        return False
+    return "Video:" in text
 
 
 class DualCapture:
@@ -146,6 +180,7 @@ class DualCapture:
         ffmpeg_path: Optional[str] = None,
     ) -> None:
         ffmpeg = ffmpeg_path or find_ffmpeg()
+        self._ffmpeg = ffmpeg
         self.camera_path = camera_path
         self.screen_path = screen_path
         self._camera = _FfmpegProcess(
@@ -198,13 +233,12 @@ class DualCapture:
             p.request_stop()
 
         problems: List[str] = []
+        forced: List[str] = []
         for p in self._processes:
             clean = p.wait(STOP_TIMEOUT_SECONDS)
             if not clean:
-                problems.append(
-                    f"The {p.name} capture did not stop in time and was "
-                    "force-closed; its file may be unplayable."
-                )
+                # Reported below only if the file turns out to be unplayable.
+                forced.append(p.name)
             elif p.proc is not None and p.proc.returncode not in (0, 255):
                 tail = p.error_tail()
                 problems.append(
@@ -221,6 +255,16 @@ class DualCapture:
                             (self.screen_path, "screen")):
             if not path.exists() or path.stat().st_size == 0:
                 problems.append(f"The {label} file was not written: {path.name}")
+            elif not _is_playable(self._ffmpeg, path):
+                note = (
+                    " The capture did not stop in time and was force-closed."
+                    if label in forced
+                    else ""
+                )
+                problems.append(
+                    f"The {label} file could not be opened and may be "
+                    f"unplayable: {path.name}.{note}"
+                )
 
         if problems:
             raise CaptureError("\n".join(problems))

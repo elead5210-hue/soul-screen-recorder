@@ -1,6 +1,7 @@
 """Main window: a single Record/Stop button and a status indicator."""
 
 import tkinter as tk
+from tkinter import messagebox
 from typing import Optional
 
 from recorder.controller import RecorderController
@@ -55,6 +56,10 @@ class MainWindow:
         )
         self._button.pack()
 
+        # Intercept the window close button so an in-progress recording is
+        # finalized cleanly instead of being cut off mid-write.
+        self._root.protocol("WM_DELETE_WINDOW", self._on_close)
+
         self._controller.add_listener(self._on_state_changed)
         self._apply_state(self._controller.state, self._controller.message)
 
@@ -62,6 +67,38 @@ class MainWindow:
 
     def _on_button_click(self) -> None:
         self._controller.toggle()
+
+    def _on_close(self) -> None:
+        state = self._controller.state
+        if state in (RecorderState.RECORDING, RecorderState.PROCESSING):
+            if state == RecorderState.RECORDING:
+                prompt = (
+                    "A recording is in progress.\n\n"
+                    "Quit now? The recording will be stopped and saved "
+                    "(camera.mp4 and screen.mp4), but final.mp4 will not be "
+                    "created. You can create it later with recorder.recomposite."
+                )
+            else:
+                prompt = (
+                    "The recording is still being finalized.\n\n"
+                    "Quit now? The app will wait for the files to finish "
+                    "saving first, but final.mp4 may not be created. You can "
+                    "create it later with recorder.recomposite."
+                )
+            if not messagebox.askyesno(
+                "Quit Soul Screen Recorder?", prompt, parent=self._root
+            ):
+                return
+
+            # Show feedback while ffmpeg flushes; shutdown() blocks for a
+            # few seconds until the files are finalized.
+            self._button.config(state=tk.DISABLED)
+            self._status_label.config(text="Saving files...", fg="#d97706")
+            self._detail_label.config(text="")
+            self._root.update_idletasks()
+
+        self._controller.shutdown()
+        self._root.destroy()
 
     def _on_state_changed(self, state: RecorderState, message: Optional[str]) -> None:
         # The controller may call us from a background thread; Tk is not
