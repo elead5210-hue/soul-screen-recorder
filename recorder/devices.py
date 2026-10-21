@@ -16,13 +16,33 @@ import re
 import shutil
 import subprocess
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
-FFMPEG_NOT_FOUND_MESSAGE = (
-    "ffmpeg was not found. Install it with: brew install ffmpeg"
+# The user-facing messages live in recorder/errors.py so the wording is the
+# same everywhere. FFMPEG_NOT_FOUND_MESSAGE is re-exported for other modules.
+from recorder.errors import (
+    BLACKHOLE_MISSING_MESSAGE,
+    FFMPEG_NOT_FOUND_MESSAGE,
+    device_not_found_message,
 )
 
 _DEVICE_LINE = re.compile(r"\[(\d+)\]\s+(.+?)\s*$")
+
+# The dropdown/settings value meaning "pick this device automatically".
+AUTO_CHOICE = "Auto-detect"
+
+# avfoundation lists each display as a video device with this in its name.
+SCREEN_NAME_MARKER = "capture screen"
+
+# Name fragments of devices that are not a real camera or microphone. Auto-
+# detection skips them (a device you pick yourself is always honoured).
+_VIRTUAL_CAMERA_MARKERS = (
+    "virtual", "snap camera", "manycam", "ndi video", "desk view",
+)
+_NON_MICROPHONE_MARKERS = (
+    "blackhole", "multi-output", "aggregate", "soundflower", "loopback",
+    "zoomaudiodevice", "virtual",
+)
 
 
 class DeviceError(Exception):
@@ -117,44 +137,111 @@ def _first_match(devices: List[Device], *needles: str,
     return None
 
 
-def select_devices(devices: DeviceList) -> SelectedDevices:
-    """Pick camera, microphone, screen and BlackHole from a device list."""
-    screen = _first_match(devices.video, "capture screen")
+def _is_screen(device: Device) -> bool:
+    return SCREEN_NAME_MARKER in device.name.lower()
+
+
+def _has_marker(device: Device, markers: Tuple[str, ...]) -> bool:
+    name = device.name.lower()
+    return any(marker in name for marker in markers)
+
+
+def screen_options(devices: DeviceList) -> List[Device]:
+    """Every screen that can be recorded."""
+    return [d for d in devices.video if _is_screen(d)]
+
+
+def camera_options(devices: DeviceList) -> List[Device]:
+    """Every camera (video devices that are not screens)."""
+    return [d for d in devices.video if not _is_screen(d)]
+
+
+def microphone_options(devices: DeviceList) -> List[Device]:
+    """Every audio input except BlackHole, which is reserved for system audio."""
+    return [d for d in devices.audio if "blackhole" not in d.name.lower()]
+
+
+def _find_named(options: List[Device], name: Optional[str]) -> Optional[Device]:
+    """Return the device called `name` (case-insensitive), or None.
+
+    Devices are matched by name because their indexes change when devices
+    are plugged in or removed. None, an empty name or AUTO_CHOICE means
+    "no preference"; a name that is not connected also gives None, so the
+    caller falls back to auto-detection.
+    """
+    if not name:
+        return None
+    wanted = name.strip().lower()
+    if not wanted or wanted == AUTO_CHOICE.lower():
+        return None
+    for device in options:
+        if device.name.lower() == wanted:
+            return device
+    return None
+
+
+def _auto_pick(options: List[Device], skip_markers: Tuple[str, ...]) -> Optional[Device]:
+    """First device that is not virtual; if all are, the first device."""
+    for device in options:
+        if not _has_marker(device, skip_markers):
+            return device
+    return options[0] if options else None
+
+
+def _chosen_name(name: Optional[str]) -> Optional[str]:
+    """The device the user picked, or None when it is on Auto-detect."""
+    if not name or not name.strip() or name.strip().lower() == AUTO_CHOICE.lower():
+        return None
+    return name.strip()
+
+
+def select_devices(
+    devices: DeviceList,
+    camera_name: Optional[str] = None,
+    microphone_name: Optional[str] = None,
+    screen_name: Optional[str] = None,
+) -> SelectedDevices:
+    """Pick camera, microphone, screen and BlackHole from a device list.
+
+    The optional names are the user's choices from the settings dropdowns.
+    Any that is missing, AUTO_CHOICE, or not currently connected falls back
+    to automatic detection. BlackHole is always found automatically.
+    """
+    screen_choices = screen_options(devices)
+    screen = _find_named(screen_choices, screen_name) or (
+        screen_choices[0] if screen_choices else None
+    )
     if screen is None:
         raise DeviceError(
-            "No screen capture device found. Check that Screen Recording "
-            "permission is granted in System Settings > Privacy & Security."
+            device_not_found_message("screen", _chosen_name(screen_name))
+            + " Also check that Screen Recording permission is granted in "
+            "System Settings > Privacy & Security."
         )
 
-    camera = _first_match(devices.video, exclude=["capture screen"],
-                          *[""]) if False else None
-    for device in devices.video:
-        if "capture screen" not in device.name.lower():
-            camera = device
-            break
+    camera_choices = camera_options(devices)
+    camera = _find_named(camera_choices, camera_name) or _auto_pick(
+        camera_choices, _VIRTUAL_CAMERA_MARKERS
+    )
     if camera is None:
         raise DeviceError(
-            "No camera found. Connect a camera and grant Camera permission "
-            "in System Settings > Privacy & Security."
+            device_not_found_message("camera", _chosen_name(camera_name))
+            + " Also check that Camera permission is granted in System "
+            "Settings > Privacy & Security."
         )
 
     system_audio = _first_match(devices.audio, "blackhole")
     if system_audio is None:
-        raise DeviceError(
-            "BlackHole 2ch was not found, so system audio cannot be "
-            "captured. Install it with: brew install --cask blackhole-2ch"
-        )
+        raise DeviceError(BLACKHOLE_MISSING_MESSAGE)
 
-    microphone = _first_match(devices.audio, exclude=["blackhole"], *[""])
-    if microphone is None:
-        for device in devices.audio:
-            if "blackhole" not in device.name.lower():
-                microphone = device
-                break
+    microphone_choices = microphone_options(devices)
+    microphone = _find_named(microphone_choices, microphone_name) or _auto_pick(
+        microphone_choices, _NON_MICROPHONE_MARKERS
+    )
     if microphone is None:
         raise DeviceError(
-            "No microphone found. Connect a microphone and grant "
-            "Microphone permission in System Settings > Privacy & Security."
+            device_not_found_message("microphone", _chosen_name(microphone_name))
+            + " Also check that Microphone permission is granted in System "
+            "Settings > Privacy & Security."
         )
 
     return SelectedDevices(
@@ -165,6 +252,19 @@ def select_devices(devices: DeviceList) -> SelectedDevices:
     )
 
 
-def detect_devices(ffmpeg_path: Optional[str] = None) -> SelectedDevices:
-    """List devices and select the ones needed for recording."""
-    return select_devices(list_devices(ffmpeg_path))
+def detect_devices(
+    ffmpeg_path: Optional[str] = None,
+    camera_name: Optional[str] = None,
+    microphone_name: Optional[str] = None,
+    screen_name: Optional[str] = None,
+) -> SelectedDevices:
+    """List devices and select the ones needed for recording.
+
+    The optional names are the user's saved choices; see select_devices.
+    """
+    return select_devices(
+        list_devices(ffmpeg_path),
+        camera_name=camera_name,
+        microphone_name=microphone_name,
+        screen_name=screen_name,
+    )

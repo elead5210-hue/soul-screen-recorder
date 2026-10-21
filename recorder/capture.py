@@ -22,6 +22,7 @@ from typing import IO, List, Optional
 
 from recorder.devices import SelectedDevices, find_ffmpeg
 from recorder.encoding import video_encoder_args
+from recorder.errors import friendly_ffmpeg_failure, friendly_message
 
 # How long to wait for ffmpeg to finalize a file after we send "q".
 STOP_TIMEOUT_SECONDS = 20
@@ -33,6 +34,15 @@ FRAMERATE = 30
 # Fragmented MP4: a new fragment (and keyframe) every couple of seconds.
 FRAGMENT_SECONDS = 2
 MOVFLAGS = "+frag_keyframe+empty_moov+default_base_moof"
+
+# What each capture opens, used to name the problem in error messages.
+_CAPTURE_KINDS = {
+    "camera": "camera or microphone",
+    "screen": "screen or system audio device",
+}
+# How much of ffmpeg's log is read to recognise a problem (the user is shown
+# only the friendly explanation plus the last few lines).
+_LOG_CHARS_FOR_DIAGNOSIS = 4000
 
 
 class CaptureError(Exception):
@@ -47,14 +57,19 @@ class _FfmpegProcess:
         self.cmd = cmd
         self._log: IO[bytes] = tempfile.TemporaryFile()
         self.proc: Optional[subprocess.Popen] = None
+        # time.monotonic() just before and just after Popen returned.
+        self.launch_started_at: Optional[float] = None
+        self.launch_returned_at: Optional[float] = None
 
     def start(self) -> None:
+        self.launch_started_at = time.monotonic()
         self.proc = subprocess.Popen(
             self.cmd,
             stdin=subprocess.PIPE,
             stdout=subprocess.DEVNULL,
             stderr=self._log,
         )
+        self.launch_returned_at = time.monotonic()
 
     def is_running(self) -> bool:
         return self.proc is not None and self.proc.poll() is None
@@ -189,6 +204,17 @@ class DualCapture:
             "screen", build_screen_command(ffmpeg, devices, screen_path)
         )
         self._started = False
+        self._launch_gap_seconds: Optional[float] = None
+
+    @property
+    def launch_gap_seconds(self) -> Optional[float]:
+        """Measured gap between the two ffmpeg launches, in seconds.
+
+        Positive means the screen capture was launched after the camera
+        capture (so the presenter started first); negative means the
+        opposite. None until both processes have been launched.
+        """
+        return self._launch_gap_seconds
 
     @property
     def _processes(self) -> List[_FfmpegProcess]:
@@ -199,13 +225,23 @@ class DualCapture:
         if self._started:
             raise CaptureError("Capture is already running.")
 
+        self._launch_gap_seconds = None
         try:
-            # Back to back, nothing in between, to keep the start times close.
+            # Both commands are fully built already. Launch back to back,
+            # nothing in between, to keep the start times close; each launch
+            # is timestamped with time.monotonic() around Popen.
             self._camera.start()
             self._screen.start()
         except (FileNotFoundError, OSError) as exc:
             self._abort()
-            raise CaptureError(f"Could not launch ffmpeg: {exc}")
+            raise CaptureError(
+                f"Could not launch ffmpeg. {friendly_message(exc)}"
+            )
+
+        cam_t = self._camera.launch_returned_at
+        scr_t = self._screen.launch_returned_at
+        if cam_t is not None and scr_t is not None:
+            self._launch_gap_seconds = scr_t - cam_t
 
         self._started = True
 
@@ -214,11 +250,14 @@ class DualCapture:
         time.sleep(STARTUP_CHECK_SECONDS)
         for p in self._processes:
             if not p.is_running():
-                detail = p.error_tail()
+                log = p.error_tail(_LOG_CHARS_FOR_DIAGNOSIS)
                 self._abort()
                 raise CaptureError(
-                    f"The {p.name} capture failed to start."
-                    + (f"\n{detail}" if detail else "")
+                    friendly_ffmpeg_failure(
+                        log,
+                        _CAPTURE_KINDS.get(p.name),
+                        f"The {p.name} capture failed to start.",
+                    )
                 )
 
     def stop(self) -> None:
@@ -239,10 +278,13 @@ class DualCapture:
                 # Reported below only if the file turns out to be unplayable.
                 forced.append(p.name)
             elif p.proc is not None and p.proc.returncode not in (0, 255):
-                tail = p.error_tail()
+                log = p.error_tail(_LOG_CHARS_FOR_DIAGNOSIS)
                 problems.append(
-                    f"The {p.name} capture ended with an error."
-                    + (f"\n{tail}" if tail else "")
+                    friendly_ffmpeg_failure(
+                        log,
+                        _CAPTURE_KINDS.get(p.name),
+                        f"The {p.name} capture ended with an error.",
+                    )
                 )
 
         self._started = False

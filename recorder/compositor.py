@@ -17,6 +17,14 @@ from typing import List, Optional
 
 from recorder.devices import find_ffmpeg
 from recorder.encoding import video_encoder_args
+from recorder.errors import (
+    DISK_FULL_MESSAGE,
+    FFMPEG_NOT_FOUND_MESSAGE,
+    FOLDER_NOT_WRITABLE_MESSAGE,
+    explain_ffmpeg_output,
+    friendly_message,
+    last_log_lines,
+)
 
 # Default picture-in-picture layout.
 DEFAULT_PIP_WIDTH = 320
@@ -56,34 +64,58 @@ def build_filter_graph(
     margin: int,
     screen_has_audio: bool,
     camera_has_audio: bool,
+    camera_offset: float = 0.0,
 ) -> "tuple[str, Optional[str]]":
     """Return (filter_complex, audio_label).
 
     Input 0 is screen.mp4 and input 1 is camera.mp4. audio_label is the
     mapped audio output label, or None when neither input has audio.
+
+    camera_offset is in seconds and shifts both the camera video and the
+    camera audio before overlay and mixing: positive delays the presenter,
+    negative advances it (the start of the camera recording is trimmed).
+    The default of 0 leaves the graph unchanged.
     """
     # Even width keeps yuv420p / the hardware encoder happy; -2 keeps the
     # camera's aspect ratio with an even height.
     width = max(2, int(pip_width) // 2 * 2)
+
+    offset = float(camera_offset)
+    video_shift = ""
+    audio_shift = ""
+    if offset > 0:
+        video_shift = f"setpts=PTS+{offset:.3f}/TB,"
+        audio_shift = f"adelay={int(round(offset * 1000))}:all=1"
+    elif offset < 0:
+        video_shift = f"trim=start={-offset:.3f},setpts=PTS-STARTPTS,"
+        audio_shift = f"atrim=start={-offset:.3f},asetpts=PTS-STARTPTS"
+
     parts = [
-        f"[1:v]scale={width}:-2[pip]",
+        f"[1:v]{video_shift}scale={width}:-2[pip]",
         f"[0:v][pip]overlay=W-w-{int(margin)}:H-h-{int(margin)},"
         "format=yuv420p[v]",
     ]
+
+    # The camera audio input to use: the raw stream, or the shifted copy.
+    camera_audio_in = "[1:a]"
+    if camera_has_audio and audio_shift:
+        parts.append(f"[1:a]{audio_shift}[ca]")
+        camera_audio_in = "[ca]"
 
     audio_label: Optional[str] = None
     if screen_has_audio and camera_has_audio:
         # amix lowers each input's level, so bring the mix back up and
         # use a limiter to avoid clipping when both sources are loud.
         parts.append(
-            "[0:a][1:a]amix=inputs=2:duration=longest:dropout_transition=0,"
+            f"[0:a]{camera_audio_in}"
+            "amix=inputs=2:duration=longest:dropout_transition=0,"
             "volume=2,alimiter=limit=0.95[a]"
         )
         audio_label = "[a]"
     elif screen_has_audio:
         audio_label = "0:a"
     elif camera_has_audio:
-        audio_label = "1:a"
+        audio_label = "1:a" if camera_audio_in == "[1:a]" else camera_audio_in
 
     return ";".join(parts), audio_label
 
@@ -97,10 +129,11 @@ def build_composite_command(
     margin: int = DEFAULT_PIP_MARGIN,
     screen_has_audio: bool = True,
     camera_has_audio: bool = True,
+    camera_offset: float = 0.0,
 ) -> List[str]:
     """Build the ffmpeg command that writes the PiP video to `output`."""
     graph, audio_label = build_filter_graph(
-        pip_width, margin, screen_has_audio, camera_has_audio
+        pip_width, margin, screen_has_audio, camera_has_audio, camera_offset
     )
     cmd = [
         ffmpeg, "-hide_banner", "-y",
@@ -129,6 +162,7 @@ def composite(
     pip_width: int = DEFAULT_PIP_WIDTH,
     margin: int = DEFAULT_PIP_MARGIN,
     ffmpeg_path: Optional[str] = None,
+    camera_offset: float = 0.0,
 ) -> Path:
     """Create final.mp4 from the two raw recordings and return its path.
 
@@ -160,6 +194,7 @@ def composite(
         margin=margin,
         screen_has_audio=_has_audio(ffmpeg, screen_path),
         camera_has_audio=_has_audio(ffmpeg, camera_path),
+        camera_offset=camera_offset,
     )
     temp_path = Path(cmd[-1])
 
@@ -179,16 +214,29 @@ def composite(
         )
     except OSError as exc:
         _remove(temp_path)
-        raise CompositeError(f"Could not launch ffmpeg: {exc}")
+        raise CompositeError(f"Could not launch ffmpeg. {friendly_message(exc)}")
 
     if result.returncode != 0:
-        tail = result.stderr.decode("utf-8", errors="replace").strip()[-600:]
+        log = result.stderr.decode("utf-8", errors="replace").strip()
         _remove(temp_path)
-        raise CompositeError(
+        message = (
             "Could not create the final video. camera.mp4 and screen.mp4 "
             "are still saved."
-            + (f"\n{tail}" if tail else "")
         )
+        # Only problems that are certain to apply to compositing are
+        # explained; anything else shows the last lines of ffmpeg's log.
+        explained = explain_ffmpeg_output(log)
+        if explained is not None and explained.title in (
+            DISK_FULL_MESSAGE,
+            FOLDER_NOT_WRITABLE_MESSAGE,
+            FFMPEG_NOT_FOUND_MESSAGE,
+        ):
+            message += "\n" + explained.text()
+        else:
+            tail = last_log_lines(log)
+            if tail:
+                message += "\n" + tail
+        raise CompositeError(message)
 
     if not temp_path.exists() or temp_path.stat().st_size == 0:
         _remove(temp_path)
@@ -201,7 +249,10 @@ def composite(
         temp_path.replace(final_path)
     except OSError as exc:
         _remove(temp_path)
-        raise CompositeError(f"Could not save {final_path.name}: {exc}")
+        raise CompositeError(
+            f"Could not save {final_path.name}. {friendly_message(exc)} "
+            "camera.mp4 and screen.mp4 are still saved."
+        )
 
     return final_path
 

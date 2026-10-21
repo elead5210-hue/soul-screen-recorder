@@ -1,9 +1,10 @@
 """Recording controller: owns the current state and notifies listeners.
 
 The one-click Record/Stop state machine drives the capture layer: Record
-creates a timestamped session folder, detects the devices and starts the
-camera and screen ffmpeg captures; Stop finalizes both files on a background
-thread, so the UI never waits for ffmpeg to flush. `shutdown()` stops any
+(STARTING state, on a background thread) checks the sound output, creates a
+timestamped session folder, detects the devices and starts the camera and
+screen ffmpeg captures; Stop finalizes both files on a background thread, so
+the UI never waits for ffmpeg to start or flush. `shutdown()` stops any
 running capture cleanly before the app exits. Any capture, device or session
 failure is surfaced as the ERROR state with a message.
 After Stop, the `_process` hook composites the two raw files into final.mp4
@@ -12,19 +13,56 @@ is also surfaced as the ERROR state, and the raw files are kept.
 Before recording, the sound output is checked: system audio is only captured
 (and still audible) when the Mac outputs to a Multi-Output Device that includes
 BlackHole 2ch; otherwise the ERROR state explains how to set that up.
+Before anything else, the Camera, Microphone and Screen Recording permissions
+are checked; if one is turned off, the ERROR state explains how to turn it on,
+and the controller lets the UI see what is missing and open the matching
+System Settings pane without touching the permissions module.
+The camera, microphone and screen are auto-detected unless the user picked
+others in the Devices dropdowns; the controller lists the available devices
+and loads and saves those choices, so the UI never touches ffmpeg or the
+settings file.
 """
 
 import threading
-from typing import Callable, List, Optional
+from dataclasses import dataclass
+from typing import Callable, List, Optional, Tuple
 
 from recorder.audio_output import OutputKind, detect_default_output
 from recorder.capture import STOP_TIMEOUT_SECONDS, CaptureError, DualCapture
 from recorder.compositor import composite
-from recorder.devices import DeviceError, detect_devices
+from recorder.device_settings import DeviceSettings, load_settings, save_settings
+from recorder.devices import (
+    DeviceError,
+    camera_options,
+    detect_devices,
+    list_devices,
+    microphone_options,
+    screen_options,
+)
+from recorder.permissions import (
+    Permission,
+    check_permissions as detect_permissions,
+    fix_instructions,
+    missing_permissions as find_missing_permissions,
+    open_privacy_settings as open_settings_pane,
+    request_screen_recording_access,
+    summary as permissions_summary,
+)
+from recorder.errors import friendly_message
 from recorder.session import Session, SessionError, create_session
 from recorder.state import RecorderState
+from recorder.sync import SyncError, load_sync, record_launch_gap
 
 StateListener = Callable[[RecorderState, Optional[str]], None]
+
+
+@dataclass(frozen=True)
+class DeviceOptions:
+    """Names of the devices currently available for each dropdown."""
+
+    cameras: List[str]
+    microphones: List[str]
+    screens: List[str]
 
 _MULTI_OUTPUT_STEPS = (
     "To fix this, open Audio MIDI Setup, create a Multi-Output Device that "
@@ -68,6 +106,8 @@ class RecorderController:
         self._capture_done = threading.Event()
         self._capture_done.set()
         self._shutting_down = False
+        # Permissions found turned off by the most recent check.
+        self._missing_permissions: Tuple[Permission, ...] = ()
 
     # ---- state access -------------------------------------------------
 
@@ -84,6 +124,86 @@ class RecorderController:
     def message(self) -> Optional[str]:
         """Optional detail text (e.g. an error description) for the state."""
         return self._message
+
+    # ---- permissions --------------------------------------------------
+
+    @property
+    def missing_permissions(self) -> List[Permission]:
+        """Permissions found turned off by the most recent check."""
+        return list(self._missing_permissions)
+
+    def check_permissions(self) -> List[Permission]:
+        """Check Camera, Microphone and Screen Recording access.
+
+        Returns the permissions that are turned off (an empty list if none,
+        or if a status cannot be read) and remembers them in
+        `missing_permissions`. Never raises.
+        """
+        missing = tuple(find_missing_permissions(detect_permissions()))
+        self._missing_permissions = missing
+        return list(missing)
+
+    def permission_summary(self) -> str:
+        """One short line about what is turned off, or '' if nothing is."""
+        return permissions_summary(self._missing_permissions)
+
+    def permission_help(self) -> str:
+        """Step-by-step instructions for the missing permissions, or ''."""
+        return fix_instructions(self._missing_permissions)
+
+    def open_privacy_settings(self, permission: Optional[Permission] = None) -> bool:
+        """Open the System Settings privacy pane for a permission.
+
+        With no argument, opens the pane of the first missing permission.
+        Returns False if there is nothing to open or it could not be opened.
+        """
+        if permission is None:
+            if not self._missing_permissions:
+                return False
+            permission = self._missing_permissions[0]
+        return open_settings_pane(permission)
+
+    def _ensure_permissions(self) -> None:
+        """Raise CaptureError with fix instructions if a permission is off.
+
+        A permission that macOS has not asked about yet, or whose status
+        cannot be read, does not block recording: macOS prompts the first
+        time the device is opened.
+        """
+        missing = self.check_permissions()
+        if not missing:
+            return
+        if Permission.SCREEN_RECORDING in missing:
+            # Shows the one-time macOS prompt if it has not been shown yet.
+            request_screen_recording_access()
+        raise CaptureError(fix_instructions(missing))
+
+    # ---- device choices -----------------------------------------------
+
+    def list_device_options(self) -> DeviceOptions:
+        """List the cameras, microphones and screens that can be chosen.
+
+        Runs ffmpeg, which takes a moment, so call it from a background
+        thread. Raises DeviceError if ffmpeg is missing or cannot list the
+        devices.
+        """
+        devices = list_devices()
+        return DeviceOptions(
+            cameras=[d.name for d in camera_options(devices)],
+            microphones=[d.name for d in microphone_options(devices)],
+            screens=[d.name for d in screen_options(devices)],
+        )
+
+    def get_device_settings(self) -> DeviceSettings:
+        """The saved device choices (all auto-detect if none were saved)."""
+        return load_settings()
+
+    def save_device_settings(self, settings: DeviceSettings) -> None:
+        """Remember the device choices for next time.
+
+        Raises SettingsError if they cannot be saved.
+        """
+        save_settings(settings)
 
     # ---- listeners ----------------------------------------------------
 
@@ -119,14 +239,46 @@ class RecorderController:
                 self._begin_recording()
             elif state == RecorderState.RECORDING:
                 self._end_recording()
-            # PROCESSING: ignore clicks until finished.
+            # STARTING / PROCESSING: ignore clicks until finished.
 
     def _begin_recording(self) -> None:
+        # Start-up is slow (sound output check, device detection, launching
+        # ffmpeg and waiting for it to come up), so it runs off the calling
+        # thread. toggle() returns immediately and the UI shows STARTING.
+        self._capture_done.clear()
+        self._set_state(RecorderState.STARTING)
+        self._worker = threading.Thread(target=self._run_start, daemon=True)
+        self._worker.start()
+
+    def _run_start(self) -> None:
         try:
-            self._start_capture()
+            session, capture = self._start_capture()
         except Exception as exc:
-            self._set_state(RecorderState.ERROR, str(exc))
+            self._capture_done.set()
+            # DeviceError, SessionError, CaptureError or anything unexpected:
+            # always show a readable problem (and fix) under the status.
+            self._set_state(RecorderState.ERROR, friendly_message(exc))
             return
+
+        # shutdown() sets _shutting_down before it takes the lock, so either
+        # it sees the capture stored here, or we see the flag and stop the
+        # capture ourselves. A started capture is never left running.
+        with self._lock:
+            closing = self._shutting_down
+            if not closing:
+                self._session = session
+                self._capture = capture
+
+        if closing:
+            try:
+                capture.stop()
+            except Exception:
+                # Best effort: the app is closing.
+                pass
+            self._capture_done.set()
+            return
+
+        self._capture_done.set()
         self._set_state(RecorderState.RECORDING)
 
     def _end_recording(self) -> None:
@@ -149,7 +301,8 @@ class RecorderController:
                 return
             self._process()
         except Exception as exc:
-            self._set_state(RecorderState.ERROR, str(exc))
+            # CaptureError, CompositeError or anything unexpected.
+            self._set_state(RecorderState.ERROR, friendly_message(exc))
             return
         session = self._session
         folder_note = f"Saved to {session.folder}" if session is not None else None
@@ -179,23 +332,29 @@ class RecorderController:
 
     # ---- hooks for the capture/compositing layer ---------------------
 
-    def _start_capture(self) -> None:
+    def _start_capture(self) -> Tuple[Session, DualCapture]:
         """Create the session folder and start the camera and screen captures.
 
-        Raises DeviceError, SessionError or CaptureError on failure; the
-        caller turns these into the ERROR state.
+        Runs on a background thread and returns the new session and the
+        running capture; the caller stores them. Raises DeviceError,
+        SessionError or CaptureError on failure; the caller turns these into
+        the ERROR state.
         """
-        self._session = None
-        self._capture = None
-
+        self._ensure_permissions()
         _check_audio_output()
-        devices = detect_devices()
+        # load_settings never raises: a missing or damaged settings file
+        # just means auto-detect. A chosen device that is not connected
+        # also falls back to auto-detection.
+        choices = load_settings()
+        devices = detect_devices(
+            camera_name=choices.camera,
+            microphone_name=choices.microphone,
+            screen_name=choices.screen,
+        )
         session = create_session()
         capture = DualCapture(devices, session.camera_path, session.screen_path)
         capture.start()
-
-        self._session = session
-        self._capture = capture
+        return session, capture
 
     def _stop_capture(self) -> None:
         """Stop both captures and wait for the files to be finalized.
@@ -209,6 +368,16 @@ class RecorderController:
             raise CaptureError("No recording is in progress.")
         capture.stop()
 
+        # The capture stopped cleanly: keep the measured launch gap next to
+        # the raw files. It is informational, so failing to save it must
+        # never turn a good recording into an error.
+        session = self._session
+        if session is not None:
+            try:
+                record_launch_gap(session.sync_path, capture.launch_gap_seconds)
+            except (SyncError, OSError):
+                pass
+
     def _process(self) -> None:
         """Composite camera.mp4 and screen.mp4 into final.mp4.
 
@@ -218,4 +387,11 @@ class RecorderController:
         session = self._session
         if session is None:
             raise RuntimeError("No recording session to process.")
-        composite(session.screen_path, session.camera_path, session.final_path)
+        # load_sync never raises: a missing or damaged sync.json gives 0.
+        offset = load_sync(session.sync_path).camera_offset_seconds
+        composite(
+            session.screen_path,
+            session.camera_path,
+            session.final_path,
+            camera_offset=offset,
+        )

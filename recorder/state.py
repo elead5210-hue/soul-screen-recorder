@@ -6,6 +6,7 @@ from typing import NamedTuple
 
 class RecorderState(Enum):
     IDLE = "idle"
+    STARTING = "starting"
     RECORDING = "recording"
     PROCESSING = "processing"
     DONE = "done"
@@ -25,6 +26,12 @@ STATE_STYLES = {
         color="#6b7280",
         button_text="Record",
         button_enabled=True,
+    ),
+    RecorderState.STARTING: StateStyle(
+        label="Starting...",
+        color="#d97706",
+        button_text="Starting...",
+        button_enabled=False,
     ),
     RecorderState.RECORDING: StateStyle(
         label="Recording...",
