@@ -29,6 +29,23 @@ brew install --cask blackhole-2ch
 
 Restart your Mac after installing BlackHole if it does not show up as an audio device.
 
+## How capture works
+
+The app records with plain `ffmpeg` using its `avfoundation` input, launched from Python with the standard library `subprocess` module. There are no Python capture libraries and no shell: every ffmpeg call is started with an argument list, so there is no shell quoting to go wrong.
+
+- **Finding ffmpeg.** The app uses the first `ffmpeg` on your `PATH`. If none is found, it also tries the Homebrew locations `/opt/homebrew/bin/ffmpeg` and `/usr/local/bin/ffmpeg`, because apps launched from the Finder or an IDE may not have Homebrew on their `PATH`. If ffmpeg is not installed, the app shows an **Error** status explaining how to install it.
+- **Finding the devices.** When you click Record, the app runs `ffmpeg -f avfoundation -list_devices true -i ""`, reads the list ffmpeg prints, and picks the camera, microphone, screen and BlackHole device by name. You do not need to edit any device indexes.
+- **Two ffmpeg processes.** One ffmpeg process records the presenter (`camera.mp4`) and a second records the screen (`screen.mp4`). They are started back to back, so the two recordings begin within a fraction of a second of each other.
+
+  | Process | avfoundation input | Output |
+  |---------|--------------------|--------|
+  | Presenter | webcam + microphone | `camera.mp4` |
+  | Screen | screen (with cursor) + BlackHole 2ch system audio | `screen.mp4` |
+
+  Both record at 30 fps, encode video with `h264_videotoolbox` (hardware encoding) and audio with AAC.
+- **Control.** ffmpeg runs in the background with its standard input connected to the app. To stop, the app writes `q` to that input (see Reliable file output).
+- **Log output.** ffmpeg's own log output is not shown in the terminal. It is collected in a temporary file for each process and discarded when the capture ends. If a capture fails to start or to stop cleanly, the last part of that log is included in the **Error** message under the status.
+
 ## Set up system audio (Multi-Output Device)
 
 BlackHole 2ch is a virtual audio device that lets the app record what your Mac is playing. On its own it is silent to you, so create a Multi-Output Device that sends sound to both your speakers or headphones and BlackHole:
@@ -156,6 +173,6 @@ requirements.txt         Dependencies (none required yet)
 - Stopping and processing run in a background thread, so the window never freezes while ffmpeg flushes the files.
 - `RecorderController.shutdown()` is called when the window is closed. It stops any running capture cleanly and waits for the files to be finalized before the app exits. It does not create `final.mp4`.
 - The controller notifies the window of every state change, and the window updates the indicator and button accordingly.
-- On Record, `_start_capture` detects the devices, creates the session folder and launches the camera and screen ffmpeg processes back to back. On Stop, `_stop_capture` asks both to finish so the MP4 files are finalized cleanly, and then checks that each file can be opened before processing continues.
+- On Record, `_start_capture` detects the devices, creates the session folder and launches the camera and screen ffmpeg processes back to back (see How capture works). On Stop, `_stop_capture` asks both to finish so the MP4 files are finalized cleanly, and then checks that each file can be opened before processing continues.
 - Any device, session or capture failure is shown as the **Error** status with a detail message.
 - After Stop, `_process` runs in the background thread and calls `compositor.composite()`, which runs ffmpeg with an overlay filter (presenter scaled to about 320 px, 20 px from the bottom-right corner) and mixes the microphone from `camera.mp4` with the system audio from `screen.mp4`. The raw files are never modified.
