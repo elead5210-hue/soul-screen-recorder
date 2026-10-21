@@ -54,13 +54,13 @@
       "feature_id": null,
       "title": "Two independent captures",
       "summary": "Start and stop two streams together: Stream A (webcam plus microphone) saved as camera.mp4, and Stream B (full screen plus system audio) saved as screen.mp4.",
-      "detail": "{\"planState\":\"tasks_created\",\"planPromptText\":\"Goal: Two independent captures\\nDescription: Start and stop two streams together: Stream A (webcam plus microphone) saved as camera.mp4, and Stream B (full screen plus system audio) saved as screen.mp4.\\n\\nBelow is the current file tree for this project: one path per line,\\nfollowed by a short content fingerprint (format:\\nL<byte length>:H<8-char hash> - see shared/fingerprint.js if you’ve\\nseen this project before). No file contents are included here.\\n\\nPlan the set of file changes needed to implement the goal above.\\nRespond with ONLY this JSON object, no other text before or after it:\\n{\\n  \\\"tasks\\\": [\\n    {\\n      \\\"path\\\": \\\"components/example/example.js\\\",\\n      \\\"action\\\": \\\"create\\\" | \\\"modify\\\" | \\\"delete\\\",\\n      \\\"description\\\": \\\"one-line description of the change\\\",\\n      \\\"needsFileContent\\\": true,\\n      \\\"needsMetadata\\\": false,\\n      \\\"confident\\\": true\\n    }\\n  ]\\n}\\n\\n- needsFileContent: true unless this task is a plain delete with\\n  nothing else to write.\\n- needsMetadata: true only if this task needs you to author extra\\n  structured data beyond the file’s content (leave false if unsure).\\n- confident: for \\\"modify\\\"/\\\"delete\\\" tasks, whether your memory of\\n  that file’s current content matches the fingerprint shown above.\\n  Always true for \\\"create\\\" tasks (there’s nothing to remember yet).\\n\\nCurrent file tree:\\nmain.py  L448:H573b4f86\\nREADME.md  L3207:H358e4039\\nrecorder/__init__.py  L71:Hf8924643\\nrecorder/controller.py  L3668:H8b33ad9f\\nrecorder/state.py  L1560:Hdee2c515\\nrequirements.txt  L356:H088c815a\\nui/__init__.py  L91:He423e5c3\\nui/main_window.py  L3082:H9a8a9550\"}",
+      "detail": "{\"planState\":\"tasks_created\",\"planPromptText\":\"Goal: Two independent captures\\nDescription: Start and stop two streams together: Stream A (webcam plus microphone) saved as camera.mp4, and Stream B (full screen plus system audio) saved as screen.mp4.\\n\\nBelow is the current file tree for this project: one path per line,\\nfollowed by a short content fingerprint (format:\\nL<byte length>:H<8-char hash> - see shared/fingerprint.js if you’ve\\nseen this project before). No file contents are included here.\\n\\nPlan the set of file changes needed to implement the goal above.\\nRespond with ONLY this JSON object, no other text before or after it:\\n{\\n  \\\"tasks\\\": [\\n    {\\n      \\\"path\\\": \\\"components/example/example.js\\\",\\n      \\\"action\\\": \\\"create\\\" | \\\"modify\\\" | \\\"delete\\\",\\n      \\\"description\\\": \\\"one-line description of the change\\\",\\n      \\\"needsFileContent\\\": true,\\n      \\\"needsMetadata\\\": false,\\n      \\\"confident\\\": true\\n    }\\n  ]\\n}\\n\\n- needsFileContent: true unless this task is a plain delete with\\n  nothing else to write.\\n- needsMetadata: true only if this task needs you to author extra\\n  structured data beyond the file’s content (leave false if unsure).\\n- confident: for \\\"modify\\\"/\\\"delete\\\" tasks, whether your memory of\\n  that file’s current content matches the fingerprint shown above.\\n  Always true for \\\"create\\\" tasks (there’s nothing to remember yet).\\n\\nCurrent file tree:\\nmain.py  L448:H573b4f86\\nREADME.md  L3207:H358e4039\\nrecorder/__init__.py  L71:Hf8924643\\nrecorder/controller.py  L3668:H8b33ad9f\\nrecorder/state.py  L1560:Hdee2c515\\nrequirements.txt  L356:H088c815a\\nui/__init__.py  L91:He423e5c3\\nui/main_window.py  L3082:H9a8a9550\",\"pushOutcome\":{\"status\":\"pushed\",\"sha\":\"8785fec9ffae37b10b2b62b25bbb8ca1b49c74d8\",\"at\":\"2026-10-21T12:50:17.234Z\"}}",
       "linked_element_ids": [],
       "finalized": false,
       "blocked_by": [],
       "notes": "",
       "createdAt": "2026-10-21T12:40:08.600Z",
-      "updatedAt": "2026-10-21T12:43:23.295Z"
+      "updatedAt": "2026-10-21T12:50:17.254Z"
     },
     {
       "roadmap_node_id": "rmn_3a5cb1de5c8cc18559cdbb1a",
@@ -74,13 +74,13 @@
       "feature_id": null,
       "title": "Automatic PiP composite on stop",
       "summary": "Produce final.mp4 with the screen as the main video and the presenter in a small bottom-right overlay (default about 320 px wide, 20 px margin). The final audio mixes the presenter's mic and the system audio.",
-      "detail": "",
+      "detail": "{\"planState\":\"tasks_created\",\"planPromptText\":\"Goal: Automatic PiP composite on stop\\nDescription: Produce final.mp4 with the screen as the main video and the presenter in a small bottom-right overlay (default about 320 px wide, 20 px margin). The final audio mixes the presenter's mic and the system audio.\\n\\nBelow is the current file tree for this project: one path per line,\\nfollowed by a short content fingerprint (format:\\nL<byte length>:H<8-char hash> - see shared/fingerprint.js if you’ve\\nseen this project before). No file contents are included here.\\n\\nPlan the set of file changes needed to implement the goal above.\\nRespond with ONLY this JSON object, no other text before or after it:\\n{\\n  \\\"tasks\\\": [\\n    {\\n      \\\"path\\\": \\\"components/example/example.js\\\",\\n      \\\"action\\\": \\\"create\\\" | \\\"modify\\\" | \\\"delete\\\",\\n      \\\"description\\\": \\\"one-line description of the change\\\",\\n      \\\"needsFileContent\\\": true,\\n      \\\"needsMetadata\\\": false,\\n      \\\"confident\\\": true\\n    }\\n  ]\\n}\\n\\n- needsFileContent: true unless this task is a plain delete with\\n  nothing else to write.\\n- needsMetadata: true only if this task needs you to author extra\\n  structured data beyond the file’s content (leave false if unsure).\\n- confident: for \\\"modify\\\"/\\\"delete\\\" tasks, whether your memory of\\n  that file’s current content matches the fingerprint shown above.\\n  Always true for \\\"create\\\" tasks (there’s nothing to remember yet).\\n\\nCurrent file tree:\\n.gitignore  L179:H6ae6e29c\\nmain.py  L448:H573b4f86\\nREADME.md  L6066:H0bf8db01\\nrecorder/__init__.py  L71:Hf8924643\\nrecorder/capture.py  L7639:H8c68c356\\nrecorder/controller.py  L4892:Ha2e55ad3\\nrecorder/devices.py  L5402:H6fa043c8\\nrecorder/session.py  L2468:H663a985c\\nrecorder/state.py  L1560:Hdee2c515\\nrequirements.txt  L680:H230461f9\\nui/__init__.py  L91:He423e5c3\\nui/main_window.py  L3082:H9a8a9550\"}",
       "linked_element_ids": [],
       "finalized": false,
       "blocked_by": [],
       "notes": "",
       "createdAt": "2026-10-21T12:40:08.600Z",
-      "updatedAt": "2026-10-21T12:40:08.600Z"
+      "updatedAt": "2026-10-21T12:51:07.076Z"
     },
     {
       "roadmap_node_id": "rmn_c5e2ffe635f9b1bee3051f0d",
@@ -483,6 +483,26 @@
       "updatedAt": "2026-10-21T12:43:45.314Z"
     },
     {
+      "roadmap_node_id": "rmn_1744121b0334cd8eee3cd154",
+      "project_id": "9b3183b2-bfd9-4cad-abef-05891f52b874",
+      "parent_roadmap_node_id": "rmn_3a5cb1de5c8cc18559cdbb1a",
+      "type": "task",
+      "depth": 2,
+      "locked": false,
+      "status": "done",
+      "order": 0,
+      "feature_id": null,
+      "title": "recorder/compositor.py",
+      "summary": "Build and run the ffmpeg command that overlays camera.mp4 (scaled to about 320 px wide, 20 px margin, bottom right) on screen.mp4 and mixes the mic and system audio into final.mp4, with clear errors on failure",
+      "detail": "{\"fileChangeMode\":\"write-file\",\"action\":\"create\",\"description\":\"Build and run the ffmpeg command that overlays camera.mp4 (scaled to about 320 px wide, 20 px margin, bottom right) on screen.mp4 and mixes the mic and system audio into final.mp4, with clear errors on failure\",\"needsFileContent\":true,\"needsMetadata\":false,\"confident\":true,\"fileStatus\":\"done\",\"metadataStatus\":\"not_needed\",\"metadata\":null}",
+      "linked_element_ids": [],
+      "finalized": false,
+      "blocked_by": [],
+      "notes": "",
+      "createdAt": "2026-10-21T12:51:06.788Z",
+      "updatedAt": "2026-10-21T12:51:39.834Z"
+    },
+    {
       "roadmap_node_id": "rmn_10baf0aca3f8b39da83b3397",
       "project_id": "9b3183b2-bfd9-4cad-abef-05891f52b874",
       "parent_roadmap_node_id": "rmn_4774dd81fe9dd4fd59527875",
@@ -523,6 +543,26 @@
       "updatedAt": "2026-10-21T12:44:14.045Z"
     },
     {
+      "roadmap_node_id": "rmn_423fa12dcec14891d9dbef83",
+      "project_id": "9b3183b2-bfd9-4cad-abef-05891f52b874",
+      "parent_roadmap_node_id": "rmn_3a5cb1de5c8cc18559cdbb1a",
+      "type": "task",
+      "depth": 2,
+      "locked": false,
+      "status": "done",
+      "order": 1,
+      "feature_id": null,
+      "title": "recorder/controller.py",
+      "summary": "Fill the _process hook to call the compositor on the current session's camera.mp4 and screen.mp4 to produce final.mp4, surfacing compositing errors as ERROR state",
+      "detail": "{\"fileChangeMode\":\"patch\",\"action\":\"modify\",\"description\":\"Fill the _process hook to call the compositor on the current session's camera.mp4 and screen.mp4 to produce final.mp4, surfacing compositing errors as ERROR state\",\"needsFileContent\":true,\"needsMetadata\":false,\"confident\":true,\"fileStatus\":\"done\",\"metadataStatus\":\"not_needed\",\"metadata\":null}",
+      "linked_element_ids": [],
+      "finalized": false,
+      "blocked_by": [],
+      "notes": "",
+      "createdAt": "2026-10-21T12:51:06.910Z",
+      "updatedAt": "2026-10-21T12:52:08.787Z"
+    },
+    {
       "roadmap_node_id": "rmn_80f892ac62b81da5f7d64917",
       "project_id": "9b3183b2-bfd9-4cad-abef-05891f52b874",
       "parent_roadmap_node_id": "rmn_4774dd81fe9dd4fd59527875",
@@ -561,6 +601,26 @@
       "notes": "",
       "createdAt": "2026-10-21T12:43:22.956Z",
       "updatedAt": "2026-10-21T12:44:30.964Z"
+    },
+    {
+      "roadmap_node_id": "rmn_4f545c9652870216cc867667",
+      "project_id": "9b3183b2-bfd9-4cad-abef-05891f52b874",
+      "parent_roadmap_node_id": "rmn_3a5cb1de5c8cc18559cdbb1a",
+      "type": "task",
+      "depth": 2,
+      "locked": false,
+      "status": "done",
+      "order": 2,
+      "feature_id": null,
+      "title": "README.md",
+      "summary": "Document final.mp4 (PiP layout, mixed audio) in the status, saved-files, project layout and how-it-works sections",
+      "detail": "{\"fileChangeMode\":\"patch\",\"action\":\"modify\",\"description\":\"Document final.mp4 (PiP layout, mixed audio) in the status, saved-files, project layout and how-it-works sections\",\"needsFileContent\":true,\"needsMetadata\":false,\"confident\":true,\"fileStatus\":\"done\",\"metadataStatus\":\"not_needed\",\"metadata\":null}",
+      "linked_element_ids": [],
+      "finalized": false,
+      "blocked_by": [],
+      "notes": "",
+      "createdAt": "2026-10-21T12:51:06.994Z",
+      "updatedAt": "2026-10-21T12:52:25.611Z"
     },
     {
       "roadmap_node_id": "rmn_ac668d758415166ee63f361e",

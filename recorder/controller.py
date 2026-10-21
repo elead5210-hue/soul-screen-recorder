@@ -4,13 +4,16 @@ The one-click Record/Stop state machine drives the capture layer: Record
 creates a timestamped session folder, detects the devices and starts the
 camera and screen ffmpeg captures; Stop finalizes both files. Any capture,
 device or session failure is surfaced as the ERROR state with a message.
-Compositing is plugged in later through the `_process` hook.
+After Stop, the `_process` hook composites the two raw files into final.mp4
+(screen with the presenter in a bottom-right overlay); a compositing failure
+is also surfaced as the ERROR state, and the raw files are kept.
 """
 
 import threading
 from typing import Callable, List, Optional
 
 from recorder.capture import CaptureError, DualCapture
+from recorder.compositor import composite
 from recorder.devices import DeviceError, detect_devices
 from recorder.session import Session, SessionError, create_session
 from recorder.state import RecorderState
@@ -136,4 +139,12 @@ class RecorderController:
         capture.stop()
 
     def _process(self) -> None:
-        """Composite camera.mp4 and screen.mp4 into final.mp4 (later goal)."""
+        """Composite camera.mp4 and screen.mp4 into final.mp4.
+
+        Raises CompositeError on failure; the caller turns it into the
+        ERROR state. The raw camera.mp4 and screen.mp4 are left untouched.
+        """
+        session = self._session
+        if session is None:
+            raise RuntimeError("No recording session to process.")
+        composite(session.screen_path, session.camera_path, session.final_path)

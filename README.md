@@ -2,7 +2,7 @@
 
 A macOS app (Python) that records the screen and the presenter as two separate streams, then combines them into one video with the presenter in a picture-in-picture at the bottom right.
 
-> **Current status (v1):** the window, the single Record/Stop button, the status indicator and the two ffmpeg captures are implemented. Record starts the camera and screen captures; Stop finalizes `camera.mp4` and `screen.mp4` in a timestamped folder. The picture-in-picture `final.mp4` is plugged in by a later goal.
+> **Current status (v1):** the window, the single Record/Stop button, the status indicator and the two ffmpeg captures are implemented. Record starts the camera and screen captures; Stop finalizes `camera.mp4` and `screen.mp4` in a timestamped folder and then automatically combines them into `final.mp4`: the screen as the main video, the presenter in a small bottom-right overlay, and the microphone and system audio mixed together.
 
 ## Requirements
 
@@ -59,7 +59,10 @@ Each recording gets its own timestamped folder inside `recordings/`, created in 
 recordings/2026-10-21_14-46/
   camera.mp4    presenter: webcam + microphone
   screen.mp4    screen + system audio (BlackHole)
+  final.mp4     screen with the presenter overlay, mic + system audio mixed
 ```
+
+In `final.mp4` the presenter is scaled to about 320 px wide and placed in the bottom-right corner with a 20 px margin. `final.mp4` is written to a temporary file first and only renamed when ffmpeg succeeds, so a failed run never leaves a broken file. If compositing fails, the app shows the **Error** status, and `camera.mp4` and `screen.mp4` are still saved.
 
 If you start two recordings within the same minute, the second folder gets a `-2` suffix, so an earlier recording is never overwritten. The raw files are always kept. The app refuses to start if less than 1 GB of disk space is free.
 
@@ -84,7 +87,7 @@ A small window opens with a status indicator and one button.
 ## How to use
 
 1. Click **Record** to start a recording. The button changes to **Stop**.
-2. Click **Stop** to finish. The app processes the recording while the button is disabled.
+2. Click **Stop** to finish. The app finalizes the two raw files and creates `final.mp4` while the button is disabled. Long recordings take longer to combine.
 3. When processing finishes, the status shows **Done** and the button returns to **Record** so you can start again.
 
 ## Status indicators
@@ -93,7 +96,7 @@ A small window opens with a status indicator and one button.
 |--------|-------|---------|--------|
 | Idle - ready to record | Gray | Nothing is running; ready for a new recording. | **Record** (enabled) |
 | Recording... | Red | A recording is in progress. | **Stop** (enabled) |
-| Processing... | Orange | Recording has stopped and the files are being finalized and combined. Clicks are ignored. | **Processing...** (disabled) |
+| Processing... | Orange | Recording has stopped and the files are being finalized and combined into `final.mp4`. Clicks are ignored. | **Processing...** (disabled) |
 | Done - recording saved | Green | The last recording finished successfully. | **Record** (enabled) |
 | Error - something went wrong | Dark red | Starting, stopping, or processing failed. A detail message is shown under the status. | **Record** (enabled) |
 
@@ -107,6 +110,7 @@ recorder/
   devices.py             Finds the camera, microphone, screen and BlackHole devices
   capture.py             Starts and stops the two ffmpeg captures
   session.py             Creates the timestamped session folder
+  compositor.py          Builds final.mp4: PiP overlay and mixed audio via ffmpeg
 ui/
   main_window.py         Tkinter window: status indicator and Record/Stop button
 requirements.txt         Dependencies (none required yet)
@@ -119,4 +123,4 @@ requirements.txt         Dependencies (none required yet)
 - The controller notifies the window of every state change, and the window updates the indicator and button accordingly.
 - On Record, `_start_capture` detects the devices, creates the session folder and launches the camera and screen ffmpeg processes back to back. On Stop, `_stop_capture` asks both to finish so the MP4 files are finalized cleanly.
 - Any device, session or capture failure is shown as the **Error** status with a detail message.
-- The compositing step is still an empty hook in `controller.py` (`_process`) that a later goal will fill in.
+- After Stop, `_process` runs in the background thread and calls `compositor.composite()`, which runs ffmpeg with an overlay filter (presenter scaled to about 320 px, 20 px from the bottom-right corner) and mixes the microphone from `camera.mp4` with the system audio from `screen.mp4`. The raw files are never modified.
