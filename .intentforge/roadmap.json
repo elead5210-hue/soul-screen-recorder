@@ -74,13 +74,13 @@
       "feature_id": null,
       "title": "Automatic PiP composite on stop",
       "summary": "Produce final.mp4 with the screen as the main video and the presenter in a small bottom-right overlay (default about 320 px wide, 20 px margin). The final audio mixes the presenter's mic and the system audio.",
-      "detail": "{\"planState\":\"tasks_created\",\"planPromptText\":\"Goal: Automatic PiP composite on stop\\nDescription: Produce final.mp4 with the screen as the main video and the presenter in a small bottom-right overlay (default about 320 px wide, 20 px margin). The final audio mixes the presenter's mic and the system audio.\\n\\nBelow is the current file tree for this project: one path per line,\\nfollowed by a short content fingerprint (format:\\nL<byte length>:H<8-char hash> - see shared/fingerprint.js if you’ve\\nseen this project before). No file contents are included here.\\n\\nPlan the set of file changes needed to implement the goal above.\\nRespond with ONLY this JSON object, no other text before or after it:\\n{\\n  \\\"tasks\\\": [\\n    {\\n      \\\"path\\\": \\\"components/example/example.js\\\",\\n      \\\"action\\\": \\\"create\\\" | \\\"modify\\\" | \\\"delete\\\",\\n      \\\"description\\\": \\\"one-line description of the change\\\",\\n      \\\"needsFileContent\\\": true,\\n      \\\"needsMetadata\\\": false,\\n      \\\"confident\\\": true\\n    }\\n  ]\\n}\\n\\n- needsFileContent: true unless this task is a plain delete with\\n  nothing else to write.\\n- needsMetadata: true only if this task needs you to author extra\\n  structured data beyond the file’s content (leave false if unsure).\\n- confident: for \\\"modify\\\"/\\\"delete\\\" tasks, whether your memory of\\n  that file’s current content matches the fingerprint shown above.\\n  Always true for \\\"create\\\" tasks (there’s nothing to remember yet).\\n\\nCurrent file tree:\\n.gitignore  L179:H6ae6e29c\\nmain.py  L448:H573b4f86\\nREADME.md  L6066:H0bf8db01\\nrecorder/__init__.py  L71:Hf8924643\\nrecorder/capture.py  L7639:H8c68c356\\nrecorder/controller.py  L4892:Ha2e55ad3\\nrecorder/devices.py  L5402:H6fa043c8\\nrecorder/session.py  L2468:H663a985c\\nrecorder/state.py  L1560:Hdee2c515\\nrequirements.txt  L680:H230461f9\\nui/__init__.py  L91:He423e5c3\\nui/main_window.py  L3082:H9a8a9550\"}",
+      "detail": "{\"planState\":\"tasks_created\",\"planPromptText\":\"Goal: Automatic PiP composite on stop\\nDescription: Produce final.mp4 with the screen as the main video and the presenter in a small bottom-right overlay (default about 320 px wide, 20 px margin). The final audio mixes the presenter's mic and the system audio.\\n\\nBelow is the current file tree for this project: one path per line,\\nfollowed by a short content fingerprint (format:\\nL<byte length>:H<8-char hash> - see shared/fingerprint.js if you’ve\\nseen this project before). No file contents are included here.\\n\\nPlan the set of file changes needed to implement the goal above.\\nRespond with ONLY this JSON object, no other text before or after it:\\n{\\n  \\\"tasks\\\": [\\n    {\\n      \\\"path\\\": \\\"components/example/example.js\\\",\\n      \\\"action\\\": \\\"create\\\" | \\\"modify\\\" | \\\"delete\\\",\\n      \\\"description\\\": \\\"one-line description of the change\\\",\\n      \\\"needsFileContent\\\": true,\\n      \\\"needsMetadata\\\": false,\\n      \\\"confident\\\": true\\n    }\\n  ]\\n}\\n\\n- needsFileContent: true unless this task is a plain delete with\\n  nothing else to write.\\n- needsMetadata: true only if this task needs you to author extra\\n  structured data beyond the file’s content (leave false if unsure).\\n- confident: for \\\"modify\\\"/\\\"delete\\\" tasks, whether your memory of\\n  that file’s current content matches the fingerprint shown above.\\n  Always true for \\\"create\\\" tasks (there’s nothing to remember yet).\\n\\nCurrent file tree:\\n.gitignore  L179:H6ae6e29c\\nmain.py  L448:H573b4f86\\nREADME.md  L6066:H0bf8db01\\nrecorder/__init__.py  L71:Hf8924643\\nrecorder/capture.py  L7639:H8c68c356\\nrecorder/controller.py  L4892:Ha2e55ad3\\nrecorder/devices.py  L5402:H6fa043c8\\nrecorder/session.py  L2468:H663a985c\\nrecorder/state.py  L1560:Hdee2c515\\nrequirements.txt  L680:H230461f9\\nui/__init__.py  L91:He423e5c3\\nui/main_window.py  L3082:H9a8a9550\",\"pushOutcome\":{\"status\":\"pushed\",\"sha\":\"c7f562fbc75b00c834198b92f5ff174c5b4cadbc\",\"at\":\"2026-10-21T12:52:40.396Z\"}}",
       "linked_element_ids": [],
       "finalized": false,
       "blocked_by": [],
       "notes": "",
       "createdAt": "2026-10-21T12:40:08.600Z",
-      "updatedAt": "2026-10-21T12:51:07.076Z"
+      "updatedAt": "2026-10-21T12:52:40.423Z"
     },
     {
       "roadmap_node_id": "rmn_c5e2ffe635f9b1bee3051f0d",
@@ -94,13 +94,13 @@
       "feature_id": null,
       "title": "Keep the raw files",
       "summary": "Save each session in a timestamped folder containing camera.mp4, screen.mp4, and final.mp4 so recordings can be re-composited later.",
-      "detail": "",
+      "detail": "{\"planState\":\"tasks_created\",\"planPromptText\":\"Goal: Keep the raw files\\nDescription: Save each session in a timestamped folder containing camera.mp4, screen.mp4, and final.mp4 so recordings can be re-composited later.\\n\\nBelow is the current file tree for this project: one path per line,\\nfollowed by a short content fingerprint (format:\\nL<byte length>:H<8-char hash> - see shared/fingerprint.js if you’ve\\nseen this project before). No file contents are included here.\\n\\nPlan the set of file changes needed to implement the goal above.\\nRespond with ONLY this JSON object, no other text before or after it:\\n{\\n  \\\"tasks\\\": [\\n    {\\n      \\\"path\\\": \\\"components/example/example.js\\\",\\n      \\\"action\\\": \\\"create\\\" | \\\"modify\\\" | \\\"delete\\\",\\n      \\\"description\\\": \\\"one-line description of the change\\\",\\n      \\\"needsFileContent\\\": true,\\n      \\\"needsMetadata\\\": false,\\n      \\\"confident\\\": true\\n    }\\n  ]\\n}\\n\\n- needsFileContent: true unless this task is a plain delete with\\n  nothing else to write.\\n- needsMetadata: true only if this task needs you to author extra\\n  structured data beyond the file’s content (leave false if unsure).\\n- confident: for \\\"modify\\\"/\\\"delete\\\" tasks, whether your memory of\\n  that file’s current content matches the fingerprint shown above.\\n  Always true for \\\"create\\\" tasks (there’s nothing to remember yet).\\n\\nCurrent file tree:\\n.gitignore  L179:H6ae6e29c\\nmain.py  L448:H573b4f86\\nREADME.md  L6998:H16b534ec\\nrecorder/__init__.py  L71:Hf8924643\\nrecorder/capture.py  L7639:H8c68c356\\nrecorder/compositor.py  L6617:H8527977c\\nrecorder/controller.py  L5441:He7d925a9\\nrecorder/devices.py  L5402:H6fa043c8\\nrecorder/session.py  L2468:H663a985c\\nrecorder/state.py  L1560:Hdee2c515\\nrequirements.txt  L680:H230461f9\\nui/__init__.py  L91:He423e5c3\\nui/main_window.py  L3082:H9a8a9550\"}",
       "linked_element_ids": [],
       "finalized": false,
       "blocked_by": [],
       "notes": "",
       "createdAt": "2026-10-21T12:40:08.600Z",
-      "updatedAt": "2026-10-21T12:40:08.600Z"
+      "updatedAt": "2026-10-21T12:53:17.942Z"
     },
     {
       "roadmap_node_id": "rmn_8764ed396eadabcf80d0e42e",
@@ -503,6 +503,26 @@
       "updatedAt": "2026-10-21T12:51:39.834Z"
     },
     {
+      "roadmap_node_id": "rmn_203153ad2cc3902198be6888",
+      "project_id": "9b3183b2-bfd9-4cad-abef-05891f52b874",
+      "parent_roadmap_node_id": "rmn_c5e2ffe635f9b1bee3051f0d",
+      "type": "task",
+      "depth": 2,
+      "locked": false,
+      "status": "done",
+      "order": 0,
+      "feature_id": null,
+      "title": "recorder/controller.py",
+      "summary": "When processing finishes, report the session folder path as the DONE message so the user sees where camera.mp4, screen.mp4 and final.mp4 were saved",
+      "detail": "{\"fileChangeMode\":\"patch\",\"action\":\"modify\",\"description\":\"When processing finishes, report the session folder path as the DONE message so the user sees where camera.mp4, screen.mp4 and final.mp4 were saved\",\"needsFileContent\":true,\"needsMetadata\":false,\"confident\":true,\"fileStatus\":\"done\",\"metadataStatus\":\"not_needed\",\"metadata\":null}",
+      "linked_element_ids": [],
+      "finalized": false,
+      "blocked_by": [],
+      "notes": "",
+      "createdAt": "2026-10-21T12:53:17.660Z",
+      "updatedAt": "2026-10-21T12:53:33.470Z"
+    },
+    {
       "roadmap_node_id": "rmn_10baf0aca3f8b39da83b3397",
       "project_id": "9b3183b2-bfd9-4cad-abef-05891f52b874",
       "parent_roadmap_node_id": "rmn_4774dd81fe9dd4fd59527875",
@@ -563,6 +583,26 @@
       "updatedAt": "2026-10-21T12:52:08.787Z"
     },
     {
+      "roadmap_node_id": "rmn_e360e201836049fc4cea4b1c",
+      "project_id": "9b3183b2-bfd9-4cad-abef-05891f52b874",
+      "parent_roadmap_node_id": "rmn_c5e2ffe635f9b1bee3051f0d",
+      "type": "task",
+      "depth": 2,
+      "locked": false,
+      "status": "done",
+      "order": 1,
+      "feature_id": null,
+      "title": "recorder/recomposite.py",
+      "summary": "Command-line tool that re-runs the PiP composite on an existing session folder's raw camera.mp4 and screen.mp4 (optional PiP width and margin), so recordings can be re-composited later without touching the raw files",
+      "detail": "{\"fileChangeMode\":\"write-file\",\"action\":\"create\",\"description\":\"Command-line tool that re-runs the PiP composite on an existing session folder's raw camera.mp4 and screen.mp4 (optional PiP width and margin), so recordings can be re-composited later without touching the raw files\",\"needsFileContent\":true,\"needsMetadata\":false,\"confident\":true,\"fileStatus\":\"done\",\"metadataStatus\":\"not_needed\",\"metadata\":null}",
+      "linked_element_ids": [],
+      "finalized": false,
+      "blocked_by": [],
+      "notes": "",
+      "createdAt": "2026-10-21T12:53:17.769Z",
+      "updatedAt": "2026-10-21T12:53:53.507Z"
+    },
+    {
       "roadmap_node_id": "rmn_80f892ac62b81da5f7d64917",
       "project_id": "9b3183b2-bfd9-4cad-abef-05891f52b874",
       "parent_roadmap_node_id": "rmn_4774dd81fe9dd4fd59527875",
@@ -621,6 +661,26 @@
       "notes": "",
       "createdAt": "2026-10-21T12:51:06.994Z",
       "updatedAt": "2026-10-21T12:52:25.611Z"
+    },
+    {
+      "roadmap_node_id": "rmn_4b17f5680365b6344705fb18",
+      "project_id": "9b3183b2-bfd9-4cad-abef-05891f52b874",
+      "parent_roadmap_node_id": "rmn_c5e2ffe635f9b1bee3051f0d",
+      "type": "task",
+      "depth": 2,
+      "locked": false,
+      "status": "done",
+      "order": 2,
+      "feature_id": null,
+      "title": "README.md",
+      "summary": "Document that each session folder keeps all three files, that the raw files are never modified, and how to re-composite a session with python3 -m recorder.recomposite",
+      "detail": "{\"fileChangeMode\":\"patch\",\"action\":\"modify\",\"description\":\"Document that each session folder keeps all three files, that the raw files are never modified, and how to re-composite a session with python3 -m recorder.recomposite\",\"needsFileContent\":true,\"needsMetadata\":false,\"confident\":true,\"fileStatus\":\"done\",\"metadataStatus\":\"not_needed\",\"metadata\":null}",
+      "linked_element_ids": [],
+      "finalized": false,
+      "blocked_by": [],
+      "notes": "",
+      "createdAt": "2026-10-21T12:53:17.857Z",
+      "updatedAt": "2026-10-21T12:54:08.492Z"
     },
     {
       "roadmap_node_id": "rmn_ac668d758415166ee63f361e",

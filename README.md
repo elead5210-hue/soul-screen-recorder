@@ -64,7 +64,29 @@ recordings/2026-10-21_14-46/
 
 In `final.mp4` the presenter is scaled to about 320 px wide and placed in the bottom-right corner with a 20 px margin. `final.mp4` is written to a temporary file first and only renamed when ffmpeg succeeds, so a failed run never leaves a broken file. If compositing fails, the app shows the **Error** status, and `camera.mp4` and `screen.mp4` are still saved.
 
-If you start two recordings within the same minute, the second folder gets a `-2` suffix, so an earlier recording is never overwritten. The raw files are always kept. The app refuses to start if less than 1 GB of disk space is free.
+If you start two recordings within the same minute, the second folder gets a `-2` suffix, so an earlier recording is never overwritten. The app refuses to start if less than 1 GB of disk space is free.
+
+When a recording finishes, the **Done** status shows the folder it was saved to.
+
+## Raw files are kept
+
+Every session folder keeps all three files: `camera.mp4`, `screen.mp4` and `final.mp4`. The raw `camera.mp4` and `screen.mp4` are never modified, deleted or overwritten by the app, including when compositing fails, so you can always create the final video again.
+
+### Re-compositing a session
+
+To rebuild the picture-in-picture video from the raw files of an existing session, run this from the project folder:
+
+```bash
+python3 -m recorder.recomposite recordings/2026-10-21_14-46
+```
+
+By default this replaces `final.mp4` in that folder. Options:
+
+- `--pip-width 480` sets the overlay width in pixels (default 320)
+- `--margin 30` sets the distance from the bottom-right corner in pixels (default 20)
+- `--output final_large_pip.mp4` writes a different file name inside the session folder and keeps the existing `final.mp4`
+
+The new file is written to a temporary file first and renamed only when ffmpeg succeeds, so a failed run never damages an existing `final.mp4`.
 
 ## Install
 
@@ -111,6 +133,7 @@ recorder/
   capture.py             Starts and stops the two ffmpeg captures
   session.py             Creates the timestamped session folder
   compositor.py          Builds final.mp4: PiP overlay and mixed audio via ffmpeg
+  recomposite.py         Command-line tool to re-composite an existing session folder
 ui/
   main_window.py         Tkinter window: status indicator and Record/Stop button
 requirements.txt         Dependencies (none required yet)

@@ -106,7 +106,9 @@ class RecorderController:
         except Exception as exc:
             self._set_state(RecorderState.ERROR, str(exc))
             return
-        self._set_state(RecorderState.DONE)
+        session = self._session
+        folder_note = f"Saved to {session.folder}" if session is not None else None
+        self._set_state(RecorderState.DONE, folder_note)
 
     # ---- hooks for the capture/compositing layer ---------------------
 
