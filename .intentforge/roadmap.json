@@ -134,13 +134,13 @@
       "feature_id": null,
       "title": "ffmpeg capture via Python",
       "summary": "Use ffmpeg (avfoundation) launched from Python via subprocess as the capture method.",
-      "detail": "{\"planState\":\"tasks_created\",\"planPromptText\":\"Goal: ffmpeg capture via Python\\nDescription: Use ffmpeg (avfoundation) launched from Python via subprocess as the capture method.\\n\\nBelow is the current file tree for this project: one path per line,\\nfollowed by a short content fingerprint (format:\\nL<byte length>:H<8-char hash> - see shared/fingerprint.js if you’ve\\nseen this project before). No file contents are included here.\\n\\nPlan the set of file changes needed to implement the goal above.\\nRespond with ONLY this JSON object, no other text before or after it:\\n{\\n  \\\"tasks\\\": [\\n    {\\n      \\\"path\\\": \\\"components/example/example.js\\\",\\n      \\\"action\\\": \\\"create\\\" | \\\"modify\\\" | \\\"delete\\\",\\n      \\\"description\\\": \\\"one-line description of the change\\\",\\n      \\\"needsFileContent\\\": true,\\n      \\\"needsMetadata\\\": false,\\n      \\\"confident\\\": true\\n    }\\n  ]\\n}\\n\\n- needsFileContent: true unless this task is a plain delete with\\n  nothing else to write.\\n- needsMetadata: true only if this task needs you to author extra\\n  structured data beyond the file’s content (leave false if unsure).\\n- confident: for \\\"modify\\\"/\\\"delete\\\" tasks, whether your memory of\\n  that file’s current content matches the fingerprint shown above.\\n  Always true for \\\"create\\\" tasks (there’s nothing to remember yet).\\n\\nCurrent file tree:\\n.gitignore  L179:H6ae6e29c\\nmain.py  L448:H573b4f86\\nREADME.md  L10117:H2c660e83\\nrecorder/__init__.py  L71:Hf8924643\\nrecorder/capture.py  L9393:H25426c1f\\nrecorder/compositor.py  L6617:H8527977c\\nrecorder/controller.py  L7267:H9519798c\\nrecorder/devices.py  L5402:H6fa043c8\\nrecorder/recomposite.py  L3363:H9b3bc8b2\\nrecorder/session.py  L2468:H663a985c\\nrecorder/state.py  L1560:Hdee2c515\\nrequirements.txt  L680:H230461f9\\nui/__init__.py  L91:He423e5c3\\nui/main_window.py  L4756:H1e71083c\"}",
+      "detail": "{\"planState\":\"tasks_created\",\"planPromptText\":\"Goal: ffmpeg capture via Python\\nDescription: Use ffmpeg (avfoundation) launched from Python via subprocess as the capture method.\\n\\nBelow is the current file tree for this project: one path per line,\\nfollowed by a short content fingerprint (format:\\nL<byte length>:H<8-char hash> - see shared/fingerprint.js if you’ve\\nseen this project before). No file contents are included here.\\n\\nPlan the set of file changes needed to implement the goal above.\\nRespond with ONLY this JSON object, no other text before or after it:\\n{\\n  \\\"tasks\\\": [\\n    {\\n      \\\"path\\\": \\\"components/example/example.js\\\",\\n      \\\"action\\\": \\\"create\\\" | \\\"modify\\\" | \\\"delete\\\",\\n      \\\"description\\\": \\\"one-line description of the change\\\",\\n      \\\"needsFileContent\\\": true,\\n      \\\"needsMetadata\\\": false,\\n      \\\"confident\\\": true\\n    }\\n  ]\\n}\\n\\n- needsFileContent: true unless this task is a plain delete with\\n  nothing else to write.\\n- needsMetadata: true only if this task needs you to author extra\\n  structured data beyond the file’s content (leave false if unsure).\\n- confident: for \\\"modify\\\"/\\\"delete\\\" tasks, whether your memory of\\n  that file’s current content matches the fingerprint shown above.\\n  Always true for \\\"create\\\" tasks (there’s nothing to remember yet).\\n\\nCurrent file tree:\\n.gitignore  L179:H6ae6e29c\\nmain.py  L448:H573b4f86\\nREADME.md  L10117:H2c660e83\\nrecorder/__init__.py  L71:Hf8924643\\nrecorder/capture.py  L9393:H25426c1f\\nrecorder/compositor.py  L6617:H8527977c\\nrecorder/controller.py  L7267:H9519798c\\nrecorder/devices.py  L5402:H6fa043c8\\nrecorder/recomposite.py  L3363:H9b3bc8b2\\nrecorder/session.py  L2468:H663a985c\\nrecorder/state.py  L1560:Hdee2c515\\nrequirements.txt  L680:H230461f9\\nui/__init__.py  L91:He423e5c3\\nui/main_window.py  L4756:H1e71083c\",\"pushOutcome\":{\"status\":\"pushed\",\"sha\":\"0782c4d9db10d8a923d33233d34a3f6fe2335279\",\"at\":\"2026-10-21T13:50:45.163Z\"}}",
       "linked_element_ids": [],
       "finalized": false,
       "blocked_by": [],
       "notes": "",
       "createdAt": "2026-10-21T12:40:08.600Z",
-      "updatedAt": "2026-10-21T13:50:06.991Z"
+      "updatedAt": "2026-10-21T13:50:45.188Z"
     },
     {
       "roadmap_node_id": "rmn_e6723a4cd5a41e14172febc3",
@@ -154,13 +154,13 @@
       "feature_id": null,
       "title": "System audio capture",
       "summary": "Capture system audio through the BlackHole 2ch virtual driver with a Multi-Output Device so the user can still hear audio. Optionally evaluate ScreenCaptureKit as a driver-free alternative.",
-      "detail": "",
+      "detail": "{\"planState\":\"tasks_created\",\"planPromptText\":\"Goal: System audio capture\\nDescription: Capture system audio through the BlackHole 2ch virtual driver with a Multi-Output Device so the user can still hear audio. Optionally evaluate ScreenCaptureKit as a driver-free alternative.\\n\\nBelow is the current file tree for this project: one path per line,\\nfollowed by a short content fingerprint (format:\\nL<byte length>:H<8-char hash> - see shared/fingerprint.js if you’ve\\nseen this project before). No file contents are included here.\\n\\nPlan the set of file changes needed to implement the goal above.\\nRespond with ONLY this JSON object, no other text before or after it:\\n{\\n  \\\"tasks\\\": [\\n    {\\n      \\\"path\\\": \\\"components/example/example.js\\\",\\n      \\\"action\\\": \\\"create\\\" | \\\"modify\\\" | \\\"delete\\\",\\n      \\\"description\\\": \\\"one-line description of the change\\\",\\n      \\\"needsFileContent\\\": true,\\n      \\\"needsMetadata\\\": false,\\n      \\\"confident\\\": true\\n    }\\n  ]\\n}\\n\\n- needsFileContent: true unless this task is a plain delete with\\n  nothing else to write.\\n- needsMetadata: true only if this task needs you to author extra\\n  structured data beyond the file’s content (leave false if unsure).\\n- confident: for \\\"modify\\\"/\\\"delete\\\" tasks, whether your memory of\\n  that file’s current content matches the fingerprint shown above.\\n  Always true for \\\"create\\\" tasks (there’s nothing to remember yet).\\n\\nCurrent file tree:\\n.gitignore  L179:H6ae6e29c\\nmain.py  L448:H573b4f86\\nREADME.md  L12080:Hab412fbc\\nrecorder/__init__.py  L71:Hf8924643\\nrecorder/capture.py  L9393:H25426c1f\\nrecorder/compositor.py  L6617:H8527977c\\nrecorder/controller.py  L7267:H9519798c\\nrecorder/devices.py  L5402:H6fa043c8\\nrecorder/recomposite.py  L3363:H9b3bc8b2\\nrecorder/session.py  L2468:H663a985c\\nrecorder/state.py  L1560:Hdee2c515\\nrequirements.txt  L680:H230461f9\\nui/__init__.py  L91:He423e5c3\\nui/main_window.py  L4756:H1e71083c\"}",
       "linked_element_ids": [],
       "finalized": false,
       "blocked_by": [],
       "notes": "",
       "createdAt": "2026-10-21T12:40:08.600Z",
-      "updatedAt": "2026-10-21T12:40:08.600Z"
+      "updatedAt": "2026-10-21T13:51:24.605Z"
     },
     {
       "roadmap_node_id": "rmn_2bcdb7f1c3723c03c156207c",
@@ -563,6 +563,26 @@
       "updatedAt": "2026-10-21T13:50:28.297Z"
     },
     {
+      "roadmap_node_id": "rmn_0863c5f3f3d62c8a5b403eed",
+      "project_id": "9b3183b2-bfd9-4cad-abef-05891f52b874",
+      "parent_roadmap_node_id": "rmn_e6723a4cd5a41e14172febc3",
+      "type": "task",
+      "depth": 2,
+      "locked": false,
+      "status": "done",
+      "order": 0,
+      "feature_id": null,
+      "title": "recorder/audio_output.py",
+      "summary": "Detect the Mac's current default sound output (via system_profiler SPAudioDataType) and classify it as a Multi-Output/aggregate device, BlackHole alone, a plain output, or unknown, so the app can tell whether system audio will be both heard and captured",
+      "detail": "{\"fileChangeMode\":\"write-file\",\"action\":\"create\",\"description\":\"Detect the Mac's current default sound output (via system_profiler SPAudioDataType) and classify it as a Multi-Output/aggregate device, BlackHole alone, a plain output, or unknown, so the app can tell whether system audio will be both heard and captured\",\"needsFileContent\":true,\"needsMetadata\":false,\"confident\":true,\"fileStatus\":\"done\",\"metadataStatus\":\"not_needed\",\"metadata\":null}",
+      "linked_element_ids": [],
+      "finalized": false,
+      "blocked_by": [],
+      "notes": "",
+      "createdAt": "2026-10-21T13:51:24.286Z",
+      "updatedAt": "2026-10-21T13:52:09.402Z"
+    },
+    {
       "roadmap_node_id": "rmn_10baf0aca3f8b39da83b3397",
       "project_id": "9b3183b2-bfd9-4cad-abef-05891f52b874",
       "parent_roadmap_node_id": "rmn_4774dd81fe9dd4fd59527875",
@@ -661,6 +681,26 @@
       "notes": "",
       "createdAt": "2026-10-21T12:55:45.246Z",
       "updatedAt": "2026-10-21T12:57:53.414Z"
+    },
+    {
+      "roadmap_node_id": "rmn_f7be192737dead05ee832224",
+      "project_id": "9b3183b2-bfd9-4cad-abef-05891f52b874",
+      "parent_roadmap_node_id": "rmn_e6723a4cd5a41e14172febc3",
+      "type": "task",
+      "depth": 2,
+      "locked": false,
+      "status": "done",
+      "order": 1,
+      "feature_id": null,
+      "title": "recorder/controller.py",
+      "summary": "In _start_capture, check the default output before recording: raise a clear error with Multi-Output Device setup steps if sound goes only to a plain output (system audio would be silent) or only to BlackHole (user could not hear it); proceed when the output is a Multi-Output Device or cannot be determined",
+      "detail": "{\"fileChangeMode\":\"patch\",\"action\":\"modify\",\"description\":\"In _start_capture, check the default output before recording: raise a clear error with Multi-Output Device setup steps if sound goes only to a plain output (system audio would be silent) or only to BlackHole (user could not hear it); proceed when the output is a Multi-Output Device or cannot be determined\",\"needsFileContent\":true,\"needsMetadata\":false,\"confident\":true,\"fileStatus\":\"done\",\"metadataStatus\":\"not_needed\",\"metadata\":null}",
+      "linked_element_ids": [],
+      "finalized": false,
+      "blocked_by": [],
+      "notes": "",
+      "createdAt": "2026-10-21T13:51:24.375Z",
+      "updatedAt": "2026-10-21T13:53:37.722Z"
     },
     {
       "roadmap_node_id": "rmn_80f892ac62b81da5f7d64917",
@@ -763,6 +803,26 @@
       "updatedAt": "2026-10-21T13:48:40.679Z"
     },
     {
+      "roadmap_node_id": "rmn_0907c4a49ccda21cfdcbcce0",
+      "project_id": "9b3183b2-bfd9-4cad-abef-05891f52b874",
+      "parent_roadmap_node_id": "rmn_e6723a4cd5a41e14172febc3",
+      "type": "task",
+      "depth": 2,
+      "locked": false,
+      "status": "done",
+      "order": 2,
+      "feature_id": null,
+      "title": "docs/screencapturekit-evaluation.md",
+      "summary": "Short written evaluation of ScreenCaptureKit as a driver-free system audio alternative: macOS 13+ requirement, no BlackHole or Multi-Output Device needed, but it needs a native helper (PyObjC or Swift binary) rather than plain ffmpeg, and a recommendation to keep BlackHole for v1",
+      "detail": "{\"fileChangeMode\":\"write-file\",\"action\":\"create\",\"description\":\"Short written evaluation of ScreenCaptureKit as a driver-free system audio alternative: macOS 13+ requirement, no BlackHole or Multi-Output Device needed, but it needs a native helper (PyObjC or Swift binary) rather than plain ffmpeg, and a recommendation to keep BlackHole for v1\",\"needsFileContent\":true,\"needsMetadata\":false,\"confident\":true,\"fileStatus\":\"done\",\"metadataStatus\":\"not_needed\",\"metadata\":null}",
+      "linked_element_ids": [],
+      "finalized": false,
+      "blocked_by": [],
+      "notes": "",
+      "createdAt": "2026-10-21T13:51:24.452Z",
+      "updatedAt": "2026-10-21T13:54:08.192Z"
+    },
+    {
       "roadmap_node_id": "rmn_ac668d758415166ee63f361e",
       "project_id": "9b3183b2-bfd9-4cad-abef-05891f52b874",
       "parent_roadmap_node_id": "rmn_4774dd81fe9dd4fd59527875",
@@ -821,6 +881,26 @@
       "notes": "",
       "createdAt": "2026-10-21T12:55:45.404Z",
       "updatedAt": "2026-10-21T13:49:06.032Z"
+    },
+    {
+      "roadmap_node_id": "rmn_d908f646eb10bbf3ea5f519f",
+      "project_id": "9b3183b2-bfd9-4cad-abef-05891f52b874",
+      "parent_roadmap_node_id": "rmn_e6723a4cd5a41e14172febc3",
+      "type": "task",
+      "depth": 2,
+      "locked": false,
+      "status": "done",
+      "order": 3,
+      "feature_id": null,
+      "title": "README.md",
+      "summary": "Document the output check and its error message in the system audio section, add troubleshooting for silent system audio, and link to the ScreenCaptureKit evaluation; add the new files to the project layout",
+      "detail": "{\"fileChangeMode\":\"patch\",\"action\":\"modify\",\"description\":\"Document the output check and its error message in the system audio section, add troubleshooting for silent system audio, and link to the ScreenCaptureKit evaluation; add the new files to the project layout\",\"needsFileContent\":true,\"needsMetadata\":false,\"confident\":true,\"fileStatus\":\"done\",\"metadataStatus\":\"not_needed\",\"metadata\":null}",
+      "linked_element_ids": [],
+      "finalized": false,
+      "blocked_by": [],
+      "notes": "",
+      "createdAt": "2026-10-21T13:51:24.530Z",
+      "updatedAt": "2026-10-21T13:54:30.095Z"
     },
     {
       "roadmap_node_id": "rmn_2c115fa4dd6aeadd94ffbf2c",

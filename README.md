@@ -58,6 +58,33 @@ BlackHole 2ch is a virtual audio device that lets the app record what your Mac i
 
 The app records system audio from BlackHole 2ch, and you still hear it through your normal output. Select your normal output again in Sound settings when you are done. The volume keys do not work on a Multi-Output Device, so set the volume on your speakers or headphones.
 
+### Sound output check
+
+When you click Record, the app checks where your Mac is currently sending sound (the default output in System Settings > Sound > Output):
+
+| Current output | What happens |
+|----------------|--------------|
+| A Multi-Output Device | Recording starts. System audio is captured and you can still hear it. |
+| Your speakers, headphones or another normal output | Recording does not start. System audio would be silent in the recording. |
+| BlackHole 2ch by itself | Recording does not start. System audio would be captured, but you could not hear it. |
+| Could not be determined | Recording starts without the check. |
+
+When the check fails, the **Error** status shows a message like this:
+
+> Sound is currently going to "MacBook Pro Speakers" only, so system audio would not be recorded. To fix this, open Audio MIDI Setup, create a Multi-Output Device that includes your speakers or headphones and BlackHole 2ch, then choose it in System Settings > Sound > Output.
+
+Follow the steps above, select the Multi-Output Device, and click **Record** again. The check does not look inside a Multi-Output Device, so make sure BlackHole 2ch is ticked in it.
+
+### System audio troubleshooting
+
+- **The recording has my voice but no system audio.** Check that the Multi-Output Device is selected in System Settings > Sound > Output, that **BlackHole 2ch** is ticked in it, and that the app or video you are recording is not muted.
+- **I cannot hear anything while recording.** Make sure your normal speakers or headphones are also ticked in the Multi-Output Device, and turn up the volume on the speakers or headphones themselves, because the volume keys do not work on a Multi-Output Device.
+- **The app says BlackHole 2ch was not found.** Install it with `brew install --cask blackhole-2ch` and restart your Mac.
+- **System audio drifts or crackles.** In the Multi-Output Device, set your normal output as the **Primary Device** and tick **Drift Correction** for BlackHole 2ch.
+- **My sound is still on the Multi-Output Device after recording.** Select your normal output again in Sound settings.
+
+A driver-free alternative using ScreenCaptureKit was evaluated and is not used in v1; see [docs/screencapturekit-evaluation.md](docs/screencapturekit-evaluation.md).
+
 ## macOS permissions
 
 The first time you record, macOS asks for access. Open **System Settings > Privacy & Security** and enable the app that launches Python (for example **Terminal**, **iTerm** or your IDE) under:
@@ -158,12 +185,15 @@ recorder/
   state.py               Recording states and their label/color/button styles
   controller.py          Record/Stop state machine; notifies the UI of changes
   devices.py             Finds the camera, microphone, screen and BlackHole devices
+  audio_output.py        Detects the current sound output (Multi-Output Device, BlackHole only, or plain output)
   capture.py             Starts and stops the two ffmpeg captures; writes fragmented MP4s and verifies them after stop
   session.py             Creates the timestamped session folder
   compositor.py          Builds final.mp4: PiP overlay and mixed audio via ffmpeg
   recomposite.py         Command-line tool to re-composite an existing session folder
 ui/
   main_window.py         Tkinter window: status indicator, Record/Stop button, safe close handling
+docs/
+  screencapturekit-evaluation.md   Evaluation of ScreenCaptureKit as a driver-free alternative to BlackHole
 requirements.txt         Dependencies (none required yet)
 ```
 
@@ -173,6 +203,6 @@ requirements.txt         Dependencies (none required yet)
 - Stopping and processing run in a background thread, so the window never freezes while ffmpeg flushes the files.
 - `RecorderController.shutdown()` is called when the window is closed. It stops any running capture cleanly and waits for the files to be finalized before the app exits. It does not create `final.mp4`.
 - The controller notifies the window of every state change, and the window updates the indicator and button accordingly.
-- On Record, `_start_capture` detects the devices, creates the session folder and launches the camera and screen ffmpeg processes back to back (see How capture works). On Stop, `_stop_capture` asks both to finish so the MP4 files are finalized cleanly, and then checks that each file can be opened before processing continues.
+- On Record, `_start_capture` first checks the sound output (see Sound output check), then detects the devices, creates the session folder and launches the camera and screen ffmpeg processes back to back (see How capture works). On Stop, `_stop_capture` asks both to finish so the MP4 files are finalized cleanly, and then checks that each file can be opened before processing continues.
 - Any device, session or capture failure is shown as the **Error** status with a detail message.
 - After Stop, `_process` runs in the background thread and calls `compositor.composite()`, which runs ffmpeg with an overlay filter (presenter scaled to about 320 px, 20 px from the bottom-right corner) and mixes the microphone from `camera.mp4` with the system audio from `screen.mp4`. The raw files are never modified.

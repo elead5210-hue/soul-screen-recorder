@@ -9,11 +9,15 @@ failure is surfaced as the ERROR state with a message.
 After Stop, the `_process` hook composites the two raw files into final.mp4
 (screen with the presenter in a bottom-right overlay); a compositing failure
 is also surfaced as the ERROR state, and the raw files are kept.
+Before recording, the sound output is checked: system audio is only captured
+(and still audible) when the Mac outputs to a Multi-Output Device that includes
+BlackHole 2ch; otherwise the ERROR state explains how to set that up.
 """
 
 import threading
 from typing import Callable, List, Optional
 
+from recorder.audio_output import OutputKind, detect_default_output
 from recorder.capture import STOP_TIMEOUT_SECONDS, CaptureError, DualCapture
 from recorder.compositor import composite
 from recorder.devices import DeviceError, detect_devices
@@ -21,6 +25,33 @@ from recorder.session import Session, SessionError, create_session
 from recorder.state import RecorderState
 
 StateListener = Callable[[RecorderState, Optional[str]], None]
+
+_MULTI_OUTPUT_STEPS = (
+    "To fix this, open Audio MIDI Setup, create a Multi-Output Device that "
+    "includes your speakers or headphones and BlackHole 2ch, then choose it "
+    "in System Settings > Sound > Output."
+)
+
+
+def _check_audio_output() -> None:
+    """Raise CaptureError if system audio would be silent or inaudible.
+
+    Does nothing when the output is a Multi-Output Device or when it cannot
+    be determined, so a failed check never blocks a recording by itself.
+    """
+    output = detect_default_output()
+    name = output.name or "the current output"
+    if output.kind == OutputKind.PLAIN_OUTPUT:
+        raise CaptureError(
+            f"Sound is currently going to \"{name}\" only, so system audio "
+            f"would not be recorded. {_MULTI_OUTPUT_STEPS}"
+        )
+    if output.kind == OutputKind.BLACKHOLE_ONLY:
+        raise CaptureError(
+            f"Sound is currently going to \"{name}\" only, so you would not "
+            f"be able to hear system audio while recording. "
+            f"{_MULTI_OUTPUT_STEPS}"
+        )
 
 
 class RecorderController:
@@ -157,6 +188,7 @@ class RecorderController:
         self._session = None
         self._capture = None
 
+        _check_audio_output()
         devices = detect_devices()
         session = create_session()
         capture = DualCapture(devices, session.camera_path, session.screen_path)
