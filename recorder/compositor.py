@@ -12,6 +12,7 @@ never leaves a corrupt final.mp4 behind.
 """
 
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import List, Optional
 
@@ -41,8 +42,11 @@ AUDIO_BITRATE = "192k"
 # mic and system audio share one rate and stay aligned over time.
 MIX_SAMPLE_RATE = 48000
 
-# Compositing re-encodes the whole recording, so allow plenty of time.
-COMPOSITE_TIMEOUT_SECONDS = 60 * 60
+# Compositing re-encodes the whole recording, so it has no time limit: a long
+# recording on a slow Mac must be allowed to finish. ffmpeg's log goes to a
+# temporary file (not a pipe) and is kept to warnings, so it can neither fill
+# up a pipe and stall ffmpeg nor grow in memory. Only the tail is read back.
+LOG_TAIL_BYTES = 200_000
 
 
 class CompositeError(Exception):
@@ -169,7 +173,7 @@ def build_composite_command(
         pip_position,
     )
     cmd = [
-        ffmpeg, "-hide_banner", "-y",
+        ffmpeg, "-hide_banner", "-y", "-nostats", "-loglevel", "warning",
         "-i", str(screen_path),
         "-i", str(camera_path),
         "-filter_complex", graph,
@@ -235,26 +239,22 @@ def composite(
     )
     temp_path = Path(cmd[-1])
 
-    try:
-        result = subprocess.run(
-            cmd,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            timeout=COMPOSITE_TIMEOUT_SECONDS,
-        )
-    except subprocess.TimeoutExpired:
-        _remove(temp_path)
-        raise CompositeError(
-            "Creating the final video took too long and was stopped. "
-            "camera.mp4 and screen.mp4 are still saved."
-        )
-    except OSError as exc:
-        _remove(temp_path)
-        raise CompositeError(f"Could not launch ffmpeg. {friendly_message(exc)}")
+    with tempfile.TemporaryFile() as log_file:
+        try:
+            returncode = subprocess.run(
+                cmd,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=log_file,
+            ).returncode
+        except OSError as exc:
+            _remove(temp_path)
+            raise CompositeError(
+                f"Could not launch ffmpeg. {friendly_message(exc)}"
+            )
+        log = _read_log_tail(log_file) if returncode != 0 else ""
 
-    if result.returncode != 0:
-        log = result.stderr.decode("utf-8", errors="replace").strip()
+    if returncode != 0:
         _remove(temp_path)
         message = (
             "Could not create the final video. camera.mp4 and screen.mp4 "
@@ -292,6 +292,17 @@ def composite(
         )
 
     return final_path
+
+
+def _read_log_tail(log_file) -> str:
+    """The end of ffmpeg's temporary log file as text; '' if unreadable."""
+    try:
+        log_file.flush()
+        size = log_file.seek(0, 2)
+        log_file.seek(max(0, size - LOG_TAIL_BYTES))
+        return log_file.read().decode("utf-8", errors="replace").strip()
+    except (OSError, ValueError):
+        return ""
 
 
 def _remove(path: Path) -> None:

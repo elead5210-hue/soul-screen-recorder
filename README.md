@@ -653,6 +653,108 @@ They run with the same command as the other tests:
 python3 -m unittest discover -s tests -v
 ```
 
+## Acceptance test: 30-minute stability
+
+A 30-minute recording must complete without crashes, dropped audio or a frozen window. Several safeguards work together to make that true, and a soak test lets you prove it on your own Mac.
+
+### What keeps a long recording safe
+
+- **The Mac stays awake.** While recording, the app runs macOS's `caffeinate` (see `KeepAwake` in `recorder/stability.py`) so neither the display nor the system goes to sleep. A sleeping Mac stops both captures and leaves a gap in the audio. `caffeinate` is tied to the app's process, so it ends by itself even if the app crashes, and it is stopped again on Stop, on closing the window and on errors.
+- **A monitor watches both captures.** Every 5 seconds a background thread (`CaptureMonitor`) checks that both ffmpeg processes are still running, that `camera.mp4` and `screen.mp4` are still growing (a file that does not grow for 30 seconds means a stuck capture) and that the disk is not filling up. Each problem is reported once. A fatal problem stops both captures cleanly, so the raw files are finalized and kept, and the **Error** status explains what happened. Running low on disk space (under 2 GB free) is only a warning shown under the clock; the recording stops by itself, with everything so far kept, when less than 300 MB is left.
+- **Disk space is checked first.** Before anything starts, the app checks that the folder you save to has room for a 30-minute recording at the chosen quality (including `final.mp4` and a 10% safety margin). If not, recording does not start and the message says how many minutes would fit. Use this table to plan:
+
+  | Quality | Space for a 30-minute recording (all three files) |
+  |---------|----------------------------------------------------|
+  | Low | about 2.0 GB |
+  | Medium | about 4.7 GB |
+  | High | about 9.3 GB |
+
+- **Quiet ffmpeg logging.** Every ffmpeg process runs with `-nostats` and the `warning` log level, so its temporary log file stays tiny however long the recording is, and the log of the final composite goes to a temporary file instead of a pipe that could fill up. Compositing has no time limit, so a long recording on a slower Mac is always allowed to finish.
+- **Audio is not dropped.** Both captures use a larger input thread queue (`-thread_queue_size 1024`) and wall-clock timestamps, so audio is kept in step even when the Mac is busy.
+- **The window stays responsive.** An elapsed-time clock under the status (for example `12:34`) is refreshed once a second with Tk's `after()`, with no extra thread. Errors from the monitor reach the window through the same state updates as every other error, so they are handled on the Tk thread.
+
+### Manual checklist
+
+1. Plug in the Mac, select the Multi-Output Device as the sound output and make sure the permissions are on. Choose the video quality in [Settings](#settings) and check there is enough free space (see the table above).
+2. Click **Record**, then play a video or music with sound and speak now and then. Watch the clock reach `30:00`; the window should keep responding, and you can leave the Mac alone.
+3. Click **Stop** and wait for **Done**. Compositing a 30-minute recording takes a few minutes.
+4. Check the finished session with a minimum length and audio levels:
+
+   ```bash
+   python3 -m recorder.verify recordings/2026-10-21_14-46 --audio --min-minutes 29.5
+   ```
+
+5. Play `final.mp4` near the start, in the middle and near the end: the presenter, your voice and the system audio should all be present throughout and stay in step.
+
+### Soak test
+
+`recorder/soak.py` does this unattended. It presses Record through the app's own controller, records for the time you ask, presses Stop, waits for `final.mp4` and verifies the result. Run it from the project folder, with the Mac set up as for a normal recording:
+
+```bash
+python3 -m recorder.soak --minutes 30
+```
+
+For a quick trial of the setup, use a short run such as `--minutes 2`. While it records it measures, every 5 seconds (`--interval` changes this):
+
+- the CPU use and memory of the ffmpeg processes,
+- the size of `camera.mp4` and `screen.mp4`, which must keep growing,
+- whether the app's threads stay responsive: a heartbeat thread must wake up on time, controller calls must stay fast and the capture monitor thread must stay alive.
+
+Afterwards it runs the verify checks, with audio levels, audio-versus-video lengths and a minimum length, and prints a report. For example:
+
+```
+Soak test: 30 minute recording
+Session: recordings/2026-10-21_14-46
+  [PASS] Recording started: Record reached the Recording state
+  [PASS] Ran without errors: recorded 30:00 with no error
+  [PASS] Finished with three files: Saved to recordings/2026-10-21_14-46
+  [PASS] Low CPU: ffmpeg average 24%, peak 41% (limit 150% average)
+  [PASS] Stable memory: peak 310 MB, growth +12 MB from start to end (limits 1500 MB and 300 MB)
+  [PASS] Both captures kept running: at least 2 ffmpeg process(es) in every sample (expected 2)
+  [PASS] Files kept growing: camera.mp4 longest quiet 5s, screen.mp4 longest quiet 5s (limit 30s)
+  [PASS] App stayed responsive: heartbeat at most 0.01s late, slowest controller call 0 ms, monitor thread missing in 0 of 360 samples (limit 2.0s)
+  [PASS] Files verified: all checks passed (playable, audio audible, lengths match)
+
+PASSED: all 9 checks passed.
+```
+
+The command exits with status 0 only when every check passed, 1 when a check failed and 2 when the test could not run. Pressing Ctrl+C stops the recording cleanly and keeps the raw files. The limits can be changed with `--max-cpu`, `--max-memory-mb`, `--max-memory-growth-mb`, `--max-ui-lag` and `--max-stall`. CPU is read with `ps`, which gives a smoothed figure, so use it to tell a light hardware encode from an encoder that is using whole cores rather than as an exact number.
+
+### Reading the audio-drop checks
+
+Dropped audio makes a file's audio shorter than its video. `recorder.verify` can compare the two lengths for every file:
+
+```bash
+python3 -m recorder.verify recordings/2026-10-21_14-46 --lengths
+python3 -m recorder.verify recordings/2026-10-21_14-46 --min-minutes 30
+```
+
+`--lengths` adds one `length` line per file. The audio being 2 seconds or more shorter than the video is a `[WARN]` (some audio may have been dropped); clearly shorter (more than 5 seconds and more than 2% of the video) is a `[FAIL]`. `--min-minutes` implies `--lengths` and also fails any file shorter than the given length (10 seconds of tolerance is allowed in the soak test for start-up and stop). For example:
+
+```
+  [PASS] screen.mp4 length is 30:01 long, and the audio and video lengths match
+  [WARN] camera.mp4 length is 30:00 long, but its audio is 29:56, so some audio may have been dropped
+  [FAIL] final.mp4 length is 12:10 long, which is shorter than the required 30:00
+```
+
+### Stability troubleshooting
+
+- **The recording stopped by itself with an Error.** The message says which capture quit or got stuck, or that the disk is almost full. Everything recorded up to that point is kept in the session folder; create `final.mp4` from it with `recorder.recomposite`, then fix the cause (reconnect the camera, free up disk space) before recording again.
+- **A warning about low disk space appears under the clock.** Free up space now. The recording continues, and stops by itself with the files kept if less than 300 MB is left.
+- **Recording does not start and says only some minutes will fit.** The folder you save to has too little free space for 30 minutes at this quality. Free up space, choose another folder or pick a lower quality in [Settings](#settings).
+- **The audio is shorter than the video.** Audio was dropped, usually because the Mac was overloaded or the audio device changed during the recording. Close heavy apps, use **Low** or **Medium** quality, keep the Mac plugged in and do not unplug or switch audio devices while recording.
+- **The Mac went to sleep.** The Mac is kept awake while recording, but closing the lid of a laptop still sleeps it unless an external display is connected. Keep the lid open.
+- **The soak test reports high CPU.** Run `ffmpeg -hide_banner -encoders | grep videotoolbox`: if nothing is listed, your ffmpeg has no hardware encoder (see [Low CPU use](#low-cpu-use)).
+- **The soak test cannot start.** It needs the same setup as a normal recording; the report shows the same message as the **Error** status (permissions, sound output, devices).
+
+### Unit tests
+
+The disk-space estimate, the capture monitor (early exit, stalled file, low disk space, never raising) and the keep-awake helper are covered by `tests/test_stability.py`. It uses only the Python standard library, with fake processes and a fake clock, so it needs no Mac and no real waiting, and runs with the same command as the other tests:
+
+```bash
+python3 -m unittest discover -s tests -v
+```
+
 ## Status indicators
 
 | Status | Color | Meaning | Button |
@@ -688,12 +790,15 @@ recorder/
   sync.py                Reads and writes a session's sync.json (launch gap and camera offset)
   compositor.py          Builds final.mp4: PiP overlay and mixed audio via ffmpeg, with an optional camera offset
   recomposite.py         Command-line tool to re-composite an existing session folder (optional --camera-offset)
+  stability.py           Long-recording safeguards: keep-awake (caffeinate), disk-space estimate and the capture monitor (early exit, stalled file, low disk)
+  soak.py                Soak test: python3 -m recorder.soak --minutes 30 records unattended, measures CPU, memory, file growth and responsiveness, then verifies the files
 ui/
   main_window.py         Tkinter window: status indicator, Record/Stop button, Permissions note with Open Privacy Settings button, Devices dropdowns, safe close handling that keeps the window responsive
 tests/
   test_verify.py         Unit tests (standard library unittest) for the session folders and the playable-file check, using a fake ffmpeg
   test_final_quality.py  Unit tests (standard library unittest) for the final video's overlay layout, audio mix/resampling and the audio level checks
   test_compat.py         Unit tests (standard library unittest) for the macOS version minimum, Apple Silicon/Intel/Rosetta detection, the Tk check and the never-raises behaviour
+  test_stability.py      Unit tests (standard library unittest) for the disk-space estimate, the capture monitor and the keep-awake helper, using fake processes and a fake clock
 docs/
   screencapturekit-evaluation.md   Evaluation of ScreenCaptureKit as a driver-free alternative to BlackHole
 requirements.txt         Dependencies (none required yet)

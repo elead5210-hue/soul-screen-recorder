@@ -35,6 +35,13 @@ STARTUP_CHECK_SECONDS = 1.5
 
 FRAMERATE = 30
 
+# Long-recording stability. Quiet logging (no progress line, warnings only)
+# keeps the temporary stderr log small over a 30-minute session.
+LOG_ARGS = ["-nostats", "-loglevel", "warning"]
+# Larger avfoundation input thread queue plus wall-clock timestamps, so audio
+# is not dropped when the machine is busy and the streams stay in sync.
+INPUT_ARGS = ["-thread_queue_size", "1024", "-use_wallclock_as_timestamps", "1"]
+
 # Camera bitrate for each quality preset: half the screen bitrate (the screen
 # uses the preset's own bitrate from recorder.encoding), because the presenter
 # video is small and has less detail.
@@ -148,8 +155,9 @@ def build_camera_command(
     name = quality.strip().lower() if isinstance(quality, str) else ""
     camera_bitrate = CAMERA_BITRATES.get(name, CAMERA_BITRATES[DEFAULT_QUALITY])
     return [
-        ffmpeg, "-hide_banner", "-y",
+        ffmpeg, "-hide_banner", "-y", *LOG_ARGS,
         "-f", "avfoundation",
+        *INPUT_ARGS,
         "-framerate", str(FRAMERATE),
         "-i", f"{devices.camera.index}:{devices.microphone.index}",
         *video_encoder_args(ffmpeg, camera_bitrate, FRAMERATE * FRAGMENT_SECONDS),
@@ -168,8 +176,9 @@ def build_screen_command(
 ) -> List[str]:
     """Screen video + system audio (BlackHole) -> screen.mp4."""
     return [
-        ffmpeg, "-hide_banner", "-y",
+        ffmpeg, "-hide_banner", "-y", *LOG_ARGS,
         "-f", "avfoundation",
+        *INPUT_ARGS,
         "-capture_cursor", "1",
         "-framerate", str(FRAMERATE),
         "-i", f"{devices.screen.index}:{devices.system_audio.index}",
@@ -283,6 +292,37 @@ class DualCapture:
                         f"The {p.name} capture failed to start.",
                     )
                 )
+
+    @property
+    def raw_paths(self) -> List[Path]:
+        """The raw files being written: camera.mp4 and screen.mp4."""
+        return [self.camera_path, self.screen_path]
+
+    def is_running(self) -> bool:
+        """True while capture has been started and both ffmpeg processes are alive."""
+        return self._started and all(p.is_running() for p in self._processes)
+
+    def exit_problems(self) -> List[str]:
+        """Friendly messages for any capture that exited while recording.
+
+        Meant to be polled by a monitor during a long recording. Returns an
+        empty list while everything is running normally (or not started).
+        """
+        if not self._started:
+            return []
+        problems: List[str] = []
+        for p in self._processes:
+            if p.proc is None or p.proc.poll() is None:
+                continue
+            log = p.error_tail(_LOG_CHARS_FOR_DIAGNOSIS)
+            problems.append(
+                friendly_ffmpeg_failure(
+                    log,
+                    _CAPTURE_KINDS.get(p.name),
+                    f"The {p.name} capture stopped unexpectedly.",
+                )
+            )
+        return problems
 
     def stop(self) -> None:
         """Stop both captures and wait for the files to be finalized."""

@@ -10,6 +10,7 @@ from recorder.app_settings import AppSettings
 from recorder.controller import DeviceOptions, RecorderController
 from recorder.device_settings import DeviceSettings, SettingsError
 from recorder.devices import AUTO_CHOICE
+from recorder.stability import format_elapsed
 from recorder.state import RecorderState, style_for
 
 # Width (in pixels) of the window's content and of the wrapped message text.
@@ -51,6 +52,12 @@ class MainWindow:
         # while one is running is repeated afterwards so the note stays current.
         self._checking_permissions = False
         self._recheck_permissions = False
+        # Elapsed-time clock: shown only while recording, refreshed once a
+        # second by an after() job (never a thread, never a busy loop).
+        self._tick_job: Optional[str] = None
+        self._clock_text = ""
+        self._clock_visible = False
+        self._last_warning: Optional[str] = None
 
         self._root = tk.Tk()
         self._root.title("Soul Screen Recorder")
@@ -77,6 +84,11 @@ class MainWindow:
             status_row, text="", font=("Helvetica", 14), width=28, anchor="w"
         )
         self._status_label.pack(side=tk.LEFT)
+
+        # Elapsed recording time; packed only while recording (see _set_clock).
+        self._clock_label = tk.Label(
+            frame, text="", font=("Helvetica", 22), fg="#374151"
+        )
 
         # Optional message under the status. For an error, the first sentence
         # (what went wrong) is a bold heading, and the rest (how to fix it,
@@ -613,6 +625,7 @@ class MainWindow:
         )
         self._show_message(state, message)
         self._update_device_controls()
+        self._update_clock_for_state(state)
         if state in (RecorderState.DONE, RecorderState.ERROR):
             # A recording just ended (or failed): re-check the permissions.
             self._check_permissions()
@@ -652,6 +665,63 @@ class MainWindow:
         self._detail_label.config(
             text=body, fg="#374151" if is_error else "#7f1d1d"
         )
+
+    # ---- elapsed-time clock -------------------------------------------
+
+    def _update_clock_for_state(self, state: RecorderState) -> None:
+        """Run the clock while recording; hide it and stop the job otherwise.
+
+        State changes arrive on the Tk thread (see _on_state_changed), so a
+        failure reported by the capture monitor, which the controller turns
+        into the ERROR state, ends the clock and shows the error here too.
+        """
+        if state == RecorderState.RECORDING:
+            self._last_warning = None
+            self._update_clock()
+            if self._tick_job is None:
+                self._tick_job = self._root.after(1000, self._tick)
+            return
+        if self._tick_job is not None:
+            try:
+                self._root.after_cancel(self._tick_job)
+            except tk.TclError:
+                pass
+            self._tick_job = None
+        self._set_clock("")
+
+    def _tick(self) -> None:
+        self._tick_job = None
+        if self._closing or self._controller.state != RecorderState.RECORDING:
+            self._set_clock("")
+            return
+        self._update_clock()
+        self._tick_job = self._root.after(1000, self._tick)
+
+    def _update_clock(self) -> None:
+        """Refresh the clock and any monitor warning; only changed text is applied."""
+        self._set_clock(format_elapsed(self._controller.elapsed_seconds()))
+        warning = self._controller.recording_warning
+        if warning != self._last_warning:
+            self._last_warning = warning
+            self._set_detail("", warning or "", False)
+
+    def _set_clock(self, text: str) -> None:
+        if text == self._clock_text:
+            return
+        self._clock_text = text
+        if text:
+            self._clock_label.config(text=text)
+            if not self._clock_visible:
+                anchor = (
+                    self._detail_heading
+                    if self._heading_visible
+                    else self._detail_label
+                )
+                self._clock_label.pack(before=anchor, pady=(0, 10))
+                self._clock_visible = True
+        elif self._clock_visible:
+            self._clock_label.pack_forget()
+            self._clock_visible = False
 
     # ---- lifecycle ----------------------------------------------------
 

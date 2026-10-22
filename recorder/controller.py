@@ -27,9 +27,18 @@ The camera, microphone and screen are auto-detected unless the user picked
 others in the Devices dropdowns; the controller lists the available devices
 and loads and saves those choices, so the UI never touches ffmpeg or the
 settings file.
+While recording, the Mac is kept awake (recorder.stability.KeepAwake) and a
+CaptureMonitor watches both captures. Before starting, the free disk space is
+checked for the planned recording length. If the monitor reports a fatal
+problem (an ffmpeg process quit, a file stopped growing, the disk is nearly
+full), both captures are stopped cleanly so the raw files are finalized and
+kept, and the ERROR state shows the friendly message. The helpers are stopped
+on Stop, on shutdown and on errors. `recording_started_at` and
+`elapsed_seconds()` let the UI show an elapsed-time display.
 """
 
 import threading
+import time
 from dataclasses import dataclass
 from typing import Callable, List, Optional, Tuple
 
@@ -58,6 +67,14 @@ from recorder.permissions import (
 )
 from recorder.errors import friendly_message
 from recorder.session import Session, SessionError, create_session
+from recorder.stability import (
+    DEFAULT_PLANNED_MINUTES,
+    CaptureMonitor,
+    KeepAwake,
+    Problem,
+    Watch,
+    check_space,
+)
 from recorder.state import RecorderState
 from recorder.sync import SyncError, load_sync, record_launch_gap
 from recorder.verify import VerifyError, check_file
@@ -119,6 +136,13 @@ class RecorderController:
         self._missing_permissions: Tuple[Permission, ...] = ()
         # The platform check result, read once on first use.
         self._compatibility: Optional[CompatibilityResult] = None
+        # Long-recording safeguards, active only while a capture is running.
+        self._keep_awake = KeepAwake()
+        self._monitor: Optional[CaptureMonitor] = None
+        # time.monotonic() when the current recording began (None otherwise).
+        self._recording_started_at: Optional[float] = None
+        # Latest non-fatal warning from the monitor (e.g. low disk space).
+        self._warning: Optional[str] = None
 
     # ---- state access -------------------------------------------------
 
@@ -135,6 +159,26 @@ class RecorderController:
     def message(self) -> Optional[str]:
         """Optional detail text (e.g. an error description) for the state."""
         return self._message
+
+    @property
+    def recording_started_at(self) -> Optional[float]:
+        """When the current recording began, as a time.monotonic() value.
+
+        None when no recording is running. Use elapsed_seconds() for a clock.
+        """
+        return self._recording_started_at
+
+    def elapsed_seconds(self) -> float:
+        """Seconds since the current recording began; 0 if none is running."""
+        started = self._recording_started_at
+        if started is None:
+            return 0.0
+        return max(0.0, time.monotonic() - started)
+
+    @property
+    def recording_warning(self) -> Optional[str]:
+        """A non-fatal warning about the running recording, if any (e.g. low disk)."""
+        return self._warning
 
     # ---- platform compatibility ---------------------------------------
 
@@ -332,6 +376,7 @@ class RecorderController:
             return
 
         self._capture_done.set()
+        self._start_safeguards(session, capture)
         self._set_state(RecorderState.RECORDING)
 
     def _end_recording(self) -> None:
@@ -371,6 +416,7 @@ class RecorderController:
         that. Blocks for up to a few seconds while ffmpeg flushes.
         """
         self._shutting_down = True
+        self._stop_safeguards()
         with self._lock:
             capture = self._capture
             self._capture = None
@@ -408,6 +454,12 @@ class RecorderController:
         # load_app_settings never raises: a missing or damaged file gives the
         # defaults (recordings/ folder, medium quality).
         prefs = load_app_settings()
+        # Make sure the planned recording length fits before anything starts.
+        space = check_space(
+            prefs.output_path(), DEFAULT_PLANNED_MINUTES, prefs.quality
+        )
+        if not space.enough:
+            raise CaptureError(space.message())
         session = create_session(prefs.output_path())
         capture = DualCapture(
             devices,
@@ -418,11 +470,95 @@ class RecorderController:
         capture.start()
         return session, capture
 
+    def _start_safeguards(self, session: Session, capture: DualCapture) -> None:
+        """Keep the Mac awake and start watching the captures. Never raises."""
+        self._recording_started_at = time.monotonic()
+        self._warning = None
+        try:
+            self._keep_awake.start()
+        except Exception:
+            pass
+        try:
+            watches = []
+            for name, path in (
+                ("camera", capture.camera_path),
+                ("screen", capture.screen_path),
+            ):
+                proc = getattr(capture, f"_{name}", None)
+                running = proc.is_running if proc is not None else capture.is_running
+                watches.append(
+                    Watch(
+                        name=name,
+                        path=path,
+                        is_running=running,
+                        explain_exit=lambda c=capture: " ".join(c.exit_problems()),
+                    )
+                )
+            monitor = CaptureMonitor(
+                watches, self._on_monitor_problem, disk_folder=session.folder
+            )
+            monitor.start()
+            self._monitor = monitor
+        except Exception:
+            # A safeguard must never be the thing that breaks a recording.
+            self._monitor = None
+
+    def _stop_safeguards(self) -> None:
+        """Stop the monitor (first, so a requested stop is not seen as a failure)
+        and let the Mac sleep again. Safe to call any number of times."""
+        monitor, self._monitor = self._monitor, None
+        if monitor is not None:
+            try:
+                monitor.stop()
+            except Exception:
+                pass
+        try:
+            self._keep_awake.stop()
+        except Exception:
+            pass
+        self._recording_started_at = None
+
+    def _on_monitor_problem(self, problem: Problem) -> None:
+        """Called on the monitor's thread when it notices a problem."""
+        if not problem.fatal:
+            self._warning = problem.message
+            return
+        with self._lock:
+            if self._state != RecorderState.RECORDING or self._capture is None:
+                return
+            # Block further clicks until the files are finalized.
+            self._set_state(RecorderState.PROCESSING)
+            self._capture_done.clear()
+            self._worker = threading.Thread(
+                target=self._run_failure, args=(problem,), daemon=True
+            )
+            self._worker.start()
+
+    def _run_failure(self, problem: Problem) -> None:
+        """Stop the captures cleanly after a fatal problem and show the error.
+
+        The raw files are finalized and kept; final.mp4 is not created.
+        """
+        message = problem.message
+        try:
+            try:
+                self._stop_capture()
+            finally:
+                self._capture_done.set()
+        except Exception as exc:
+            detail = friendly_message(exc)
+            if detail and detail not in message:
+                message = f"{message}\n{detail}"
+        self._set_state(RecorderState.ERROR, message)
+
     def _stop_capture(self) -> None:
         """Stop both captures and wait for the files to be finalized.
 
         Raises CaptureError if a file could not be finalized cleanly.
         """
+        # Stop watching first, so ffmpeg exiting on request is not mistaken
+        # for a failure, and let the Mac sleep again.
+        self._stop_safeguards()
         with self._lock:
             capture = self._capture
             self._capture = None

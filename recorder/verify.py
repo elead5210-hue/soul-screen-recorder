@@ -26,6 +26,15 @@ is measured too, with ffmpeg's volumedetect filter:
     reported too, but silence there is only a WARN: nothing may have been
     playing, or nobody may have spoken.
 
+With the --lengths option (or verify_session(..., with_lengths=True)) the
+length of each file's audio is compared with the length of its video, which
+catches audio that was dropped during a long recording: audio a couple of
+seconds shorter is a WARN, clearly shorter is a FAIL. With --min-minutes the
+session must also be at least that long, so a long session can be confirmed
+complete:
+
+    python3 -m recorder.verify recordings/2026-10-21_14-46 --min-minutes 30
+
 Nothing here modifies a file: ffmpeg only reads the files and writes the
 decoded frame or audio to nowhere (`-f null`).
 """
@@ -57,6 +66,17 @@ AUDIO_TIMEOUT_SECONDS = 300
 # quiet enough to be worth a warning.
 SILENT_PEAK_DB = -60.0
 QUIET_PEAK_DB = -20.0
+
+# Dropped-audio check: how much shorter than its video a file's audio may be.
+# From the first value up is a warning; beyond the larger of the second value
+# and the given share of the video length the check fails.
+AUDIO_GAP_WARN_SECONDS = 2.0
+AUDIO_GAP_FAIL_SECONDS = 5.0
+AUDIO_GAP_FAIL_RATIO = 0.02
+# A file may be this much shorter than the required minimum length.
+MIN_LENGTH_TOLERANCE_SECONDS = 1.0
+
+_TIME_RE = re.compile(r"time=\s*(\d+):(\d+):(\d+(?:\.\d+)?)")
 
 _DURATION_RE = re.compile(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)")
 _MEAN_RE = re.compile(r"mean_volume:\s*(-?(?:\d+(?:\.\d+)?|inf))\s*dB")
@@ -295,11 +315,117 @@ def check_audio(
     return FileCheck(name, path, True, f"is audible ({measured})", kind="audio")
 
 
+def measure_stream_seconds(
+    path: Path, kind: str, ffmpeg: str, timeout: float = AUDIO_TIMEOUT_SECONDS
+) -> Optional[float]:
+    """Length in seconds of a file's first video ("v") or audio ("a") stream.
+
+    The stream is copied to nowhere (no decoding, so it is fast) and the last
+    timestamp ffmpeg reports is used. This works for fragmented MP4 files,
+    which often have no total length in their header. Returns None if the
+    stream is missing or cannot be measured. Raises VerifyError only if
+    ffmpeg cannot be run.
+    """
+    cmd = [
+        ffmpeg, "-hide_banner", "-nostdin",
+        "-i", str(path),
+        "-map", f"0:{kind}:0",
+        "-c", "copy",
+        "-f", "null", "-",
+    ]
+    try:
+        result = subprocess.run(
+            cmd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return None
+    except OSError as exc:
+        raise VerifyError(f"Could not run ffmpeg: {exc}")
+    if result.returncode != 0:
+        return None
+    text = result.stderr.decode("utf-8", errors="replace")
+    matches = _TIME_RE.findall(text)
+    if not matches:
+        return None
+    hours, minutes, seconds = matches[-1]
+    return max(0.0, int(hours) * 3600 + int(minutes) * 60 + float(seconds))
+
+
+def check_length(
+    path: Path,
+    ffmpeg: Optional[str] = None,
+    min_seconds: Optional[float] = None,
+) -> FileCheck:
+    """Compare a file's audio length with its video length (dropped audio).
+
+    Audio clearly shorter than the video is a WARN or a FAIL (see the
+    AUDIO_GAP_* values). With `min_seconds` the video must also be at least
+    that long, otherwise the check fails. A file with no audio track is only
+    judged on its length (the audio check reports missing audio). If the
+    length cannot be measured the check only warns, unless a minimum length
+    was asked for, in which case it fails. Raises VerifyError only if ffmpeg
+    itself is missing.
+    """
+    path = Path(path)
+    name = f"{path.name} length"
+
+    if ffmpeg is None:
+        try:
+            ffmpeg = find_ffmpeg()
+        except Exception as exc:
+            raise VerifyError(str(exc))
+
+    video = measure_stream_seconds(path, "v", ffmpeg)
+    if video is None:
+        return FileCheck(
+            name, path, min_seconds is None, "could not be measured",
+            warning=True, kind="length",
+        )
+    audio = measure_stream_seconds(path, "a", ffmpeg)
+
+    ok = True
+    warning = False
+    parts = [f"is {format_duration(video)} long"]
+
+    if min_seconds is not None and video < min_seconds - MIN_LENGTH_TOLERANCE_SECONDS:
+        ok = False
+        parts.append(f"which is shorter than the required {format_duration(min_seconds)}")
+
+    if audio is not None:
+        gap = video - audio
+        fail_gap = max(AUDIO_GAP_FAIL_SECONDS, AUDIO_GAP_FAIL_RATIO * video)
+        if gap > fail_gap:
+            ok = False
+            parts.append(
+                f"but its audio is only {format_duration(audio)}, so audio was "
+                "probably dropped"
+            )
+        elif gap >= AUDIO_GAP_WARN_SECONDS:
+            warning = True
+            parts.append(
+                f"but its audio is {format_duration(audio)}, so some audio may "
+                "have been dropped"
+            )
+        else:
+            parts.append("and the audio and video lengths match")
+
+    detail = " ".join(parts) if len(parts) == 1 else ", ".join(parts)
+    return FileCheck(
+        name, path, ok, detail, duration_seconds=video, warning=warning, kind="length"
+    )
+
+
 def verify_session(
     folder: Path,
     ffmpeg_path: Optional[str] = None,
     names: Sequence[str] = EXPECTED_FILES,
     with_audio: bool = False,
+    with_lengths: bool = False,
+    min_minutes: Optional[float] = None,
 ) -> SessionCheck:
     """Check every expected file in a session folder.
 
@@ -333,6 +459,13 @@ def verify_session(
                 label, required = audio_kinds[name]
                 files.append(check_audio(folder / name, label, ffmpeg, required))
 
+    if with_lengths or min_minutes is not None:
+        min_seconds = float(min_minutes) * 60 if min_minutes is not None else None
+        playable_files = {f.name for f in files if f.ok and f.kind == "file"}
+        for name in names:
+            if name in playable_files:
+                files.append(check_length(folder / name, ffmpeg, min_seconds))
+
     return SessionCheck(folder=folder, files=tuple(files))
 
 
@@ -356,7 +489,7 @@ def format_report(check: SessionCheck) -> str:
         if any(f.warning for f in check.files):
             lines.append("Check the WARN lines above.")
     else:
-        noun = "checks" if audio else "files"
+        noun = "checks" if len(check.files) != len(check.video_files) else "files"
         lines.append(
             f"{len(check.failed)} of {len(check.files)} {noun} failed the check."
         )
@@ -384,13 +517,36 @@ def build_parser() -> argparse.ArgumentParser:
             "microphone (camera.mp4) and system audio (screen.mp4) are reported"
         ),
     )
+    parser.add_argument(
+        "--lengths",
+        action="store_true",
+        help=(
+            "also compare each file's audio length with its video length, to "
+            "catch audio that was dropped during the recording"
+        ),
+    )
+    parser.add_argument(
+        "--min-minutes",
+        type=float,
+        default=None,
+        metavar="MINUTES",
+        help=(
+            "also require every file to be at least this long (implies "
+            "--lengths), e.g. 30 to confirm a 30-minute session is complete"
+        ),
+    )
     return parser
 
 
 def main(argv: Optional[List[str]] = None) -> int:
     args = build_parser().parse_args(argv)
     try:
-        check = verify_session(args.session_folder, with_audio=args.audio)
+        check = verify_session(
+            args.session_folder,
+            with_audio=args.audio,
+            with_lengths=args.lengths,
+            min_minutes=args.min_minutes,
+        )
     except VerifyError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 2
