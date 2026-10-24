@@ -8,11 +8,12 @@ Stop finalizes all four files on a background thread, so
 the UI never waits for ffmpeg to start or flush. `shutdown()` stops any
 running capture cleanly before the app exits. Any capture, device or session
 failure is surfaced as the ERROR state with a message.
-After Stop, the `_process` hook composites the two raw files into final.mp4
-(screen with the presenter in a bottom-right overlay); a compositing failure
+After Stop, the `_process` hook composites the four raw files into final.mp4
+(screen with the presenter in a bottom-right overlay, plus the microphone and
+the system audio as two separate audio tracks); a compositing failure
 is also surfaced as the ERROR state, and the raw files are kept. final.mp4 is
 checked once it is written (it must open and decode), so the DONE state only
-appears when all three files are playable.
+appears when the final video is playable.
 Before recording, the sound output is checked: system audio is only captured
 (and still audible) when the Mac outputs to a Multi-Output Device that includes
 BlackHole 2ch; otherwise the ERROR state explains how to set that up.
@@ -596,29 +597,38 @@ class RecorderController:
                 pass
 
     def _process(self) -> None:
-        """Composite camera.mp4 and screen.mp4 into final.mp4.
+        """Composite the four raw files into final.mp4.
+
+        final.mp4 has the screen with the camera overlay and two separate
+        audio tracks (microphone and system audio), each shifted by its own
+        offset from sync.json.
 
         Raises CompositeError on failure; the caller turns it into the
-        ERROR state. The raw camera.mp4 and screen.mp4 are left untouched.
+        ERROR state. The raw camera.mp4, screen.mp4, mic.wav and system.wav
+        are left untouched.
         """
         session = self._session
         if session is None:
             raise RuntimeError("No recording session to process.")
         # load_sync never raises: a missing or damaged sync.json gives 0.
-        offset = load_sync(session.sync_path).camera_offset_seconds
+        sync = load_sync(session.sync_path)
         prefs = load_app_settings()
         composite(
             session.screen_path,
             session.camera_path,
+            session.mic_path,
+            session.system_path,
             session.final_path,
-            camera_offset=offset,
+            camera_offset=sync.camera_offset_seconds,
+            mic_offset=sync.mic_offset_seconds,
+            system_offset=sync.system_offset_seconds,
             pip_width=prefs.pip_width,
             pip_position=prefs.pip_position,
             quality=prefs.quality,
         )
 
         # The raw files were verified when the capture stopped. Check the
-        # final video too, so DONE always means three playable files.
+        # final video too, so DONE always means a playable final video.
         try:
             result = check_file(session.final_path)
         except VerifyError:
@@ -627,7 +637,7 @@ class RecorderController:
             return
         if not result.ok:
             raise CompositeError(
-                f"The final video {result.detail}. camera.mp4 and screen.mp4 "
-                "are still saved; create the final video again with "
-                "recorder.recomposite."
+                f"The final video {result.detail}. The four raw recordings "
+                "(camera.mp4, screen.mp4, mic.wav and system.wav) are still "
+                "saved; create the final video again with recorder.recomposite."
             )
