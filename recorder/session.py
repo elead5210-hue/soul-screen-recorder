@@ -5,9 +5,18 @@ empty value) the default folder is used: recordings/ when running from source,
 or ~/Movies/Soul Screen Recorder when running as the packaged .app (whose
 working directory is inside the app and is not a place to save videos).
 
-Each session folder holds camera.mp4, screen.mp4 and final.mp4, so the raw
-streams are kept and can be re-composited later, plus sync.json with the
-session's audio/video sync measurements and alignment offset.
+Each session folder holds four raw, independently recorded streams:
+
+- camera.mp4: the presenter's face camera (video only)
+- screen.mp4: the desktop (video only)
+- mic.wav: the microphone (audio only)
+- system.wav: the system audio, captured through BlackHole (audio only)
+
+plus final.mp4, which is composited from them (screen with the camera in a
+picture-in-picture overlay and the microphone and system audio as two
+separate tracks), and sync.json with the session's sync measurements and
+alignment offsets. The raw streams are kept so the session can be
+re-composited later.
 """
 
 import shutil
@@ -23,6 +32,8 @@ DEFAULT_OUTPUT_ROOT = Path("recordings")
 
 CAMERA_FILENAME = "camera.mp4"
 SCREEN_FILENAME = "screen.mp4"
+MIC_FILENAME = "mic.wav"
+SYSTEM_FILENAME = "system.wav"
 FINAL_FILENAME = "final.mp4"
 SYNC_FILENAME = "sync.json"
 
@@ -54,6 +65,8 @@ class Session:
     folder: Path
     camera_path: Path
     screen_path: Path
+    mic_path: Path
+    system_path: Path
     final_path: Path
     sync_path: Path
 
@@ -121,6 +134,8 @@ def create_session(
         folder=folder,
         camera_path=folder / CAMERA_FILENAME,
         screen_path=folder / SCREEN_FILENAME,
+        mic_path=folder / MIC_FILENAME,
+        system_path=folder / SYSTEM_FILENAME,
         final_path=folder / FINAL_FILENAME,
         sync_path=folder / SYNC_FILENAME,
     )
