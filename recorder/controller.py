@@ -2,8 +2,9 @@
 
 The one-click Record/Stop state machine drives the capture layer: Record
 (STARTING state, on a background thread) checks the sound output, creates a
-timestamped session folder, detects the devices and starts the camera and
-screen ffmpeg captures; Stop finalizes both files on a background thread, so
+timestamped session folder, detects the devices and starts four independent
+ffmpeg captures (camera and screen video, microphone and system audio);
+Stop finalizes all four files on a background thread, so
 the UI never waits for ffmpeg to start or flush. `shutdown()` stops any
 running capture cleanly before the app exits. Any capture, device or session
 failure is surfaced as the ERROR state with a message.
@@ -28,10 +29,11 @@ others in the Devices dropdowns; the controller lists the available devices
 and loads and saves those choices, so the UI never touches ffmpeg or the
 settings file.
 While recording, the Mac is kept awake (recorder.stability.KeepAwake) and a
-CaptureMonitor watches both captures. Before starting, the free disk space is
+CaptureMonitor watches all four captures. Before starting, the free disk space is
 checked for the planned recording length. If the monitor reports a fatal
 problem (an ffmpeg process quit, a file stopped growing, the disk is nearly
-full), both captures are stopped cleanly so the raw files are finalized and
+full) in any one of the four streams, all four captures are stopped cleanly
+so the raw files are finalized and
 kept, and the ERROR state shows the friendly message. The helpers are stopped
 on Stop, on shutdown and on errors. `recording_started_at` and
 `elapsed_seconds()` let the UI show an elapsed-time display.
@@ -43,7 +45,7 @@ from dataclasses import dataclass
 from typing import Callable, List, Optional, Tuple
 
 from recorder.audio_output import OutputKind, detect_default_output
-from recorder.capture import STOP_TIMEOUT_SECONDS, CaptureError, DualCapture
+from recorder.capture import STOP_TIMEOUT_SECONDS, CaptureError, MultiCapture
 from recorder.app_settings import AppSettings, load_app_settings, save_app_settings
 from recorder.compat import CompatibilityResult, check_compatibility
 from recorder.compositor import CompositeError, composite
@@ -76,7 +78,7 @@ from recorder.stability import (
     check_space,
 )
 from recorder.state import RecorderState
-from recorder.sync import SyncError, load_sync, record_launch_gap
+from recorder.sync import SyncError, load_sync, record_launch_offsets
 from recorder.verify import VerifyError, check_file
 
 StateListener = Callable[[RecorderState, Optional[str]], None]
@@ -125,7 +127,7 @@ class RecorderController:
         self._listeners: List[StateListener] = []
         self._lock = threading.Lock()
         self._session: Optional[Session] = None
-        self._capture: Optional[DualCapture] = None
+        self._capture: Optional[MultiCapture] = None
         self._worker: Optional[threading.Thread] = None
         # Set whenever no capture is being stopped (cleared while Stop is
         # waiting for ffmpeg to finalize the files).
@@ -409,8 +411,9 @@ class RecorderController:
     def shutdown(self) -> None:
         """Cleanly stop any running capture before the app exits.
 
-        If a recording is in progress, both ffmpeg processes are asked to
-        finish so camera.mp4 and screen.mp4 are finalized and playable. If
+        If a recording is in progress, all four ffmpeg processes are asked to
+        finish so camera.mp4, screen.mp4, mic.wav and system.wav are finalized
+        and playable. If
         Stop was already clicked, this waits for that finalization to end.
         final.mp4 is not created on shutdown; use recorder.recomposite for
         that. Blocks for up to a few seconds while ffmpeg flushes.
@@ -431,8 +434,11 @@ class RecorderController:
 
     # ---- hooks for the capture/compositing layer ---------------------
 
-    def _start_capture(self) -> Tuple[Session, DualCapture]:
-        """Create the session folder and start the camera and screen captures.
+    def _start_capture(self) -> Tuple[Session, MultiCapture]:
+        """Create the session folder and start the four captures.
+
+        The camera and screen are recorded as video only, and the microphone
+        and system audio each as their own audio file.
 
         Runs on a background thread and returns the new session and the
         running capture; the caller stores them. Raises DeviceError,
@@ -461,17 +467,24 @@ class RecorderController:
         if not space.enough:
             raise CaptureError(space.message())
         session = create_session(prefs.output_path())
-        capture = DualCapture(
+        capture = MultiCapture(
             devices,
             session.camera_path,
             session.screen_path,
+            session.mic_path,
+            session.system_path,
             quality=prefs.quality,
         )
         capture.start()
         return session, capture
 
-    def _start_safeguards(self, session: Session, capture: DualCapture) -> None:
-        """Keep the Mac awake and start watching the captures. Never raises."""
+    def _start_safeguards(self, session: Session, capture: MultiCapture) -> None:
+        """Keep the Mac awake and start watching all four captures. Never raises.
+
+        Each stream (camera, screen, mic, system) gets its own Watch, so a
+        problem in any one of them is reported by name and stops all four
+        captures cleanly.
+        """
         self._recording_started_at = time.monotonic()
         self._warning = None
         try:
@@ -483,6 +496,8 @@ class RecorderController:
             for name, path in (
                 ("camera", capture.camera_path),
                 ("screen", capture.screen_path),
+                ("mic", capture.mic_path),
+                ("system", capture.system_path),
             ):
                 proc = getattr(capture, f"_{name}", None)
                 running = proc.is_running if proc is not None else capture.is_running
@@ -552,7 +567,7 @@ class RecorderController:
         self._set_state(RecorderState.ERROR, message)
 
     def _stop_capture(self) -> None:
-        """Stop both captures and wait for the files to be finalized.
+        """Stop all four captures and wait for the files to be finalized.
 
         Raises CaptureError if a file could not be finalized cleanly.
         """
@@ -566,13 +581,17 @@ class RecorderController:
             raise CaptureError("No recording is in progress.")
         capture.stop()
 
-        # The capture stopped cleanly: keep the measured launch gap next to
-        # the raw files. It is informational, so failing to save it must
-        # never turn a good recording into an error.
+        # The capture stopped cleanly: keep each stream's measured launch
+        # time next to the raw files. It is informational, so failing to save
+        # it must never turn a good recording into an error.
         session = self._session
         if session is not None:
             try:
-                record_launch_gap(session.sync_path, capture.launch_gap_seconds)
+                record_launch_offsets(
+                    session.sync_path,
+                    capture.launch_offsets_seconds,
+                    capture.launch_gap_seconds,
+                )
             except (SyncError, OSError):
                 pass
 

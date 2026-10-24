@@ -3,8 +3,9 @@
 Three small, independent helpers, all standard library only:
 
 - `KeepAwake` runs macOS's `caffeinate` while recording, so the Mac (and its
-  display) does not go to sleep halfway through. A sleeping Mac stops both
-  captures and leaves a gap in the audio. `caffeinate` is tied to the app's
+  display) does not go to sleep halfway through. A sleeping Mac stops all four
+  captures (camera, screen, microphone and system audio) and leaves a gap in
+  the recording. `caffeinate` is tied to the app's
   process, so it ends by itself even if the app crashes.
 - `estimate_recording_bytes` and friends work out how much disk space a
   recording needs for a given length and quality preset, so a long recording
@@ -44,10 +45,16 @@ from recorder.encoding import DEFAULT_QUALITY, QUALITY_BITRATES
 # The recording length the app plans for and tests against.
 DEFAULT_PLANNED_MINUTES = 30
 
-# Audio bitrates, matching the ffmpeg commands: each live capture records one
-# AAC track at 160 kbit/s, and final.mp4 has one mixed track at 192 kbit/s.
-CAPTURE_AUDIO_BPS = 160_000
-FINAL_AUDIO_BPS = 192_000
+# Audio rates, matching the ffmpeg commands. The camera and screen files are
+# video only. The microphone and the system audio are each their own
+# uncompressed WAV file (48 kHz, 16-bit). Stereo is assumed, which is the
+# larger case, so a mono device only makes the estimate a little generous.
+# final.mp4 has two separate AAC tracks (microphone and system audio) at
+# 192 kbit/s each.
+CAPTURE_AUDIO_BPS = 48_000 * 16 * 2   # one WAV file: mic.wav or system.wav
+CAPTURE_AUDIO_FILES = 2               # mic.wav and system.wav
+FINAL_AUDIO_BPS = 192_000             # one AAC track in final.mp4
+FINAL_AUDIO_TRACKS = 2                # microphone and system audio
 
 # Extra room on top of the estimate: container overhead, fragment headers and
 # bitrate overshoot of the hardware encoder.
@@ -83,15 +90,16 @@ def recording_bytes_per_second(
 ) -> float:
     """Disk space used per second of recording, without any safety margin.
 
-    Counts camera.mp4 and screen.mp4 and, unless `include_final` is False,
-    the final.mp4 that is made when the recording stops.
+    Counts camera.mp4 and screen.mp4 (video only), mic.wav and system.wav
+    and, unless `include_final` is False, the final.mp4 that is made when
+    the recording stops.
     """
     name = _preset(quality)
     screen = parse_bitrate(QUALITY_BITRATES[name])
     camera = parse_bitrate(CAMERA_BITRATES.get(name, CAMERA_BITRATES[DEFAULT_QUALITY]))
-    bits = screen + camera + 2 * CAPTURE_AUDIO_BPS
+    bits = screen + camera + CAPTURE_AUDIO_FILES * CAPTURE_AUDIO_BPS
     if include_final:
-        bits += screen + FINAL_AUDIO_BPS
+        bits += screen + FINAL_AUDIO_TRACKS * FINAL_AUDIO_BPS
     return bits / 8
 
 
@@ -296,14 +304,15 @@ class Problem:
     kind: ProblemKind
     message: str
     fatal: bool           # True: stop the recording cleanly now
-    source: Optional[str] = None  # "camera" or "screen" where it applies
+    # "camera", "screen", "mic" or "system" where it applies
+    source: Optional[str] = None
 
 
 @dataclass(frozen=True)
 class Watch:
     """One capture to keep an eye on."""
 
-    name: str                          # "camera" or "screen"
+    name: str                          # "camera", "screen", "mic" or "system"
     path: Path                         # the raw file being written
     is_running: Callable[[], bool]     # is the ffmpeg process still alive?
     # Optional: explains why the process quit, from its log (plain words).
@@ -332,6 +341,10 @@ class CaptureMonitor:
     cleanly; the monitor keeps running, without repeating itself, until
     `stop()` is called. Stop the monitor *before* stopping the captures, so
     that ffmpeg exiting on request is not mistaken for a failure.
+
+    Every stream is watched on its own (camera, screen, mic and system), so
+    a failure in any one of them is reported by name, and the caller then
+    stops all four captures cleanly.
 
     The file-growth check is deliberately slow (`stall_seconds`): audio is
     written continuously, so a file that has not grown for that long means
