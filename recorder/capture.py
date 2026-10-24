@@ -1,10 +1,17 @@
-"""Run the two independent ffmpeg captures.
+"""Run the four independent ffmpeg captures.
 
-Stream A (presenter): camera + microphone  -> camera.mp4
-Stream B (screen):    screen + BlackHole   -> screen.mp4
+Stream 1 (presenter): face camera, video only   -> camera.mp4
+Stream 2 (screen):    desktop, video only       -> screen.mp4
+Stream 3 (mic):       microphone, audio only    -> mic.wav
+Stream 4 (system):    BlackHole, audio only     -> system.wav
 
-Both processes are launched back to back so they start within a fraction
-of a second of each other. They are stopped by writing "q" to ffmpeg's
+All four processes are launched back to back so they start within a
+fraction of a second of each other. Each stream is its own ffmpeg process,
+so a problem with one device is reported for that stream by name.
+
+The audio is written as 48 kHz 16-bit PCM WAV, flushed to disk as it is
+recorded, so the sound captured so far is on disk even if the app or Mac
+crashes (the WAV header lengths are finalized on a clean stop). They are stopped by writing "q" to ffmpeg's
 stdin, which lets ffmpeg flush and finalize the MP4.
 
 The files are written as fragmented MP4 (a playable fragment about every
@@ -18,7 +25,7 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
-from typing import IO, List, Optional
+from typing import IO, Dict, List, Optional
 
 from recorder.devices import SelectedDevices, find_ffmpeg
 from recorder.encoding import (
@@ -55,10 +62,16 @@ CAMERA_BITRATES = {
 FRAGMENT_SECONDS = 2
 MOVFLAGS = "+frag_keyframe+empty_moov+default_base_moof"
 
+# Audio-only captures: uncompressed 16-bit PCM WAV at one fixed sample rate.
+# PCM has no encoder delay, which keeps the audio easy to align with video.
+AUDIO_SAMPLE_RATE = 48000
+
 # What each capture opens, used to name the problem in error messages.
 _CAPTURE_KINDS = {
-    "camera": "camera or microphone",
-    "screen": "screen or system audio device",
+    "camera": "camera",
+    "screen": "screen",
+    "mic": "microphone",
+    "system": "system audio device (BlackHole)",
 }
 # How much of ffmpeg's log is read to recognise a problem (the user is shown
 # only the friendly explanation plus the last few lines).
@@ -151,7 +164,7 @@ def build_camera_command(
     output: Path,
     quality: str = DEFAULT_QUALITY,
 ) -> List[str]:
-    """Camera video + microphone audio -> camera.mp4."""
+    """Camera video only (no audio) -> camera.mp4."""
     name = quality.strip().lower() if isinstance(quality, str) else ""
     camera_bitrate = CAMERA_BITRATES.get(name, CAMERA_BITRATES[DEFAULT_QUALITY])
     return [
@@ -159,10 +172,10 @@ def build_camera_command(
         "-f", "avfoundation",
         *INPUT_ARGS,
         "-framerate", str(FRAMERATE),
-        "-i", f"{devices.camera.index}:{devices.microphone.index}",
+        "-i", f"{devices.camera.index}:none",
         *video_encoder_args(ffmpeg, camera_bitrate, FRAMERATE * FRAGMENT_SECONDS),
         "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-b:a", "160k",
+        "-an",
         "-movflags", MOVFLAGS,
         str(output),
     ]
@@ -174,26 +187,66 @@ def build_screen_command(
     output: Path,
     quality: str = DEFAULT_QUALITY,
 ) -> List[str]:
-    """Screen video + system audio (BlackHole) -> screen.mp4."""
+    """Screen video only (no audio) -> screen.mp4."""
     return [
         ffmpeg, "-hide_banner", "-y", *LOG_ARGS,
         "-f", "avfoundation",
         *INPUT_ARGS,
         "-capture_cursor", "1",
         "-framerate", str(FRAMERATE),
-        "-i", f"{devices.screen.index}:{devices.system_audio.index}",
+        "-i", f"{devices.screen.index}:none",
         *video_encoder_args_for_quality(
             ffmpeg, quality, FRAMERATE * FRAGMENT_SECONDS
         ),
         "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-b:a", "160k",
+        "-an",
         "-movflags", MOVFLAGS,
         str(output),
     ]
 
 
-def _is_playable(ffmpeg: str, path: Path) -> bool:
-    """Quick check that ffmpeg can open the file and finds a video stream.
+def _build_audio_command(ffmpeg: str, device_index: int, output: Path) -> List[str]:
+    """One audio device, no video -> a 48 kHz 16-bit PCM WAV file."""
+    return [
+        ffmpeg, "-hide_banner", "-y", *LOG_ARGS,
+        "-f", "avfoundation",
+        *INPUT_ARGS,
+        "-i", f"none:{device_index}",
+        "-vn",
+        "-c:a", "pcm_s16le", "-ar", str(AUDIO_SAMPLE_RATE),
+        # Push every packet to disk as it is recorded, so a crash loses at
+        # most a moment of sound. rf64 auto switches to the RF64 header on
+        # its own for a file larger than 4 GB.
+        "-flush_packets", "1",
+        "-rf64", "auto",
+        "-f", "wav",
+        str(output),
+    ]
+
+
+def build_mic_command(
+    ffmpeg: str,
+    devices: SelectedDevices,
+    output: Path,
+) -> List[str]:
+    """Microphone only -> mic.wav."""
+    return _build_audio_command(ffmpeg, devices.microphone.index, output)
+
+
+def build_system_audio_command(
+    ffmpeg: str,
+    devices: SelectedDevices,
+    output: Path,
+) -> List[str]:
+    """System audio (BlackHole) only -> system.wav."""
+    return _build_audio_command(ffmpeg, devices.system_audio.index, output)
+
+
+def _is_playable(ffmpeg: str, path: Path, marker: str = "Video:") -> bool:
+    """Quick check that ffmpeg can open the file and finds the expected stream.
+
+    `marker` is the text ffmpeg prints for the stream type: "Video:" for the
+    camera and screen files, "Audio:" for the microphone and system files.
 
     This only reads the file's headers, so it is fast even for long
     recordings. If the check itself cannot run, the file is given the
@@ -212,17 +265,20 @@ def _is_playable(ffmpeg: str, path: Path) -> bool:
     text = result.stderr.decode("utf-8", errors="replace")
     if "moov atom not found" in text or "Invalid data found" in text:
         return False
-    return "Video:" in text
+    return marker in text
 
 
-class DualCapture:
-    """Starts and stops the camera and screen captures together."""
+class MultiCapture:
+    """Starts and stops the camera, screen, microphone and system-audio
+    captures together, as four independent ffmpeg processes."""
 
     def __init__(
         self,
         devices: SelectedDevices,
         camera_path: Path,
         screen_path: Path,
+        mic_path: Path,
+        system_path: Path,
         ffmpeg_path: Optional[str] = None,
         quality: str = DEFAULT_QUALITY,
     ) -> None:
@@ -230,14 +286,23 @@ class DualCapture:
         self._ffmpeg = ffmpeg
         self.camera_path = camera_path
         self.screen_path = screen_path
+        self.mic_path = mic_path
+        self.system_path = system_path
         self._camera = _FfmpegProcess(
             "camera", build_camera_command(ffmpeg, devices, camera_path, quality)
         )
         self._screen = _FfmpegProcess(
             "screen", build_screen_command(ffmpeg, devices, screen_path, quality)
         )
+        self._mic = _FfmpegProcess(
+            "mic", build_mic_command(ffmpeg, devices, mic_path)
+        )
+        self._system = _FfmpegProcess(
+            "system", build_system_audio_command(ffmpeg, devices, system_path)
+        )
         self._started = False
         self._launch_gap_seconds: Optional[float] = None
+        self._launch_offsets: Dict[str, float] = {}
 
     @property
     def launch_gap_seconds(self) -> Optional[float]:
@@ -250,8 +315,19 @@ class DualCapture:
         return self._launch_gap_seconds
 
     @property
+    def launch_offsets_seconds(self) -> Dict[str, float]:
+        """When each stream was launched, in seconds after the first one.
+
+        Keys are "camera", "screen", "mic" and "system"; the stream launched
+        first has 0. Empty until the processes have been launched. Like
+        launch_gap_seconds, this is a measurement of when ffmpeg was launched,
+        not of when each device actually began delivering data.
+        """
+        return dict(self._launch_offsets)
+
+    @property
     def _processes(self) -> List[_FfmpegProcess]:
-        return [self._camera, self._screen]
+        return [self._camera, self._screen, self._mic, self._system]
 
     def start(self) -> None:
         """Launch both captures back to back, then verify they are running."""
@@ -259,12 +335,15 @@ class DualCapture:
             raise CaptureError("Capture is already running.")
 
         self._launch_gap_seconds = None
+        self._launch_offsets = {}
         try:
-            # Both commands are fully built already. Launch back to back,
+            # All commands are fully built already. Launch back to back,
             # nothing in between, to keep the start times close; each launch
             # is timestamped with time.monotonic() around Popen.
             self._camera.start()
             self._screen.start()
+            self._mic.start()
+            self._system.start()
         except (FileNotFoundError, OSError) as exc:
             self._abort()
             raise CaptureError(
@@ -275,6 +354,17 @@ class DualCapture:
         scr_t = self._screen.launch_returned_at
         if cam_t is not None and scr_t is not None:
             self._launch_gap_seconds = scr_t - cam_t
+
+        launched = {
+            p.name: p.launch_returned_at
+            for p in self._processes
+            if p.launch_returned_at is not None
+        }
+        if launched:
+            first = min(launched.values())
+            self._launch_offsets = {
+                name: t - first for name, t in launched.items()
+            }
 
         self._started = True
 
@@ -295,11 +385,16 @@ class DualCapture:
 
     @property
     def raw_paths(self) -> List[Path]:
-        """The raw files being written: camera.mp4 and screen.mp4."""
-        return [self.camera_path, self.screen_path]
+        """The raw files being written: camera, screen, mic and system."""
+        return [
+            self.camera_path,
+            self.screen_path,
+            self.mic_path,
+            self.system_path,
+        ]
 
     def is_running(self) -> bool:
-        """True while capture has been started and both ffmpeg processes are alive."""
+        """True while capture has been started and all four ffmpeg processes are alive."""
         return self._started and all(p.is_running() for p in self._processes)
 
     def exit_problems(self) -> List[str]:
@@ -325,7 +420,7 @@ class DualCapture:
         return problems
 
     def stop(self) -> None:
-        """Stop both captures and wait for the files to be finalized."""
+        """Stop all four captures and wait for the files to be finalized."""
         if not self._started:
             return
 
@@ -356,11 +451,15 @@ class DualCapture:
         for p in self._processes:
             p.close_log()
 
-        for path, label in ((self.camera_path, "camera"),
-                            (self.screen_path, "screen")):
+        for path, label, marker in (
+            (self.camera_path, "camera", "Video:"),
+            (self.screen_path, "screen", "Video:"),
+            (self.mic_path, "mic", "Audio:"),
+            (self.system_path, "system", "Audio:"),
+        ):
             if not path.exists() or path.stat().st_size == 0:
                 problems.append(f"The {label} file was not written: {path.name}")
-            elif not _is_playable(self._ffmpeg, path):
+            elif not _is_playable(self._ffmpeg, path, marker):
                 note = (
                     " The capture did not stop in time and was force-closed."
                     if label in forced
@@ -382,3 +481,8 @@ class DualCapture:
             p.wait(5)
             p.close_log()
         self._started = False
+
+
+# The old two-stream name, kept so existing imports still resolve until the
+# controller is updated to pass the microphone and system-audio paths.
+DualCapture = MultiCapture
