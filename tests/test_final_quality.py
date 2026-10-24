@@ -1,13 +1,14 @@
-"""Tests for the final video's picture-in-picture layout and audio mix.
+"""Tests for the final video's picture-in-picture layout and its two audio tracks.
 
 Run from the project folder with the standard library only:
 
     python3 -m unittest discover -s tests -v
 
 These tests check the ffmpeg filter graph that compositor.py builds (the
-overlay corner and margin, the amix of the microphone and system audio,
-the resampling and the camera offset) and how verify.py classifies the
-volumedetect levels it parses. A real ffmpeg is not needed: the filter
+overlay corner and margin, the two separate, unmixed audio tracks for the
+microphone and system audio, the resampling and the per-stream offsets), the
+four-input composite command and how verify.py classifies the volumedetect
+levels it parses. A real ffmpeg is not needed: the filter
 graph is built as text, and the audio checks run against a tiny fake
 "ffmpeg" script that prints a recorded volumedetect log.
 """
@@ -29,12 +30,10 @@ from recorder import compositor, verify  # noqa: E402
 
 
 def build_graph(**overrides):
-    """Build a filter graph with both inputs having audio by default."""
+    """Build the filter graph for the four inputs with default settings."""
     kwargs = dict(
         pip_width=compositor.DEFAULT_PIP_WIDTH,
         margin=compositor.DEFAULT_PIP_MARGIN,
-        screen_has_audio=True,
-        camera_has_audio=True,
     )
     kwargs.update(overrides)
     return compositor.build_filter_graph(**kwargs)
@@ -42,10 +41,10 @@ def build_graph(**overrides):
 
 class FilterGraphLayoutTests(unittest.TestCase):
     def test_default_overlay_is_bottom_right_with_the_margin(self) -> None:
-        graph, label = build_graph()
+        graph, labels = build_graph()
 
         self.assertIn("overlay=W-w-20:H-h-20", graph)
-        self.assertEqual(label, "[a]")
+        self.assertEqual(labels, ["[mic]", "[sys]"])
 
     def test_all_four_corners_place_the_overlay_correctly(self) -> None:
         expected = {
@@ -70,72 +69,67 @@ class FilterGraphLayoutTests(unittest.TestCase):
         self.assertIn("[1:v]scale=320:-2[pip]", graph)
 
 
-class AudioMixTests(unittest.TestCase):
-    def test_mic_and_system_audio_are_mixed_by_amix(self) -> None:
-        graph, label = build_graph()
+class AudioTrackTests(unittest.TestCase):
+    def test_mic_and_system_audio_are_two_separate_outputs(self) -> None:
+        graph, labels = build_graph()
 
-        self.assertIn("amix=inputs=2", graph)
-        self.assertIn("duration=longest", graph)
-        self.assertEqual(label, "[a]")
+        # The microphone is track 1 and the system audio is track 2.
+        self.assertEqual(labels, ["[mic]", "[sys]"])
+        self.assertIn("[mic]", graph)
+        self.assertIn("[sys]", graph)
+
+    def test_the_audio_is_never_mixed(self) -> None:
+        graph, _ = build_graph()
+
+        self.assertNotIn("amix", graph)
+        self.assertNotIn("alimiter", graph)
+
+    def test_audio_comes_from_the_wav_inputs_not_the_video_files(self) -> None:
+        graph, _ = build_graph()
+
+        # Input 2 is mic.wav and input 3 is system.wav; the two video files
+        # (inputs 0 and 1) carry no audio any more.
+        self.assertIn("[2:a]", graph)
+        self.assertIn("[3:a]", graph)
+        self.assertNotIn("[0:a]", graph)
+        self.assertNotIn("[1:a]", graph)
 
     def test_both_audio_inputs_are_resampled_to_the_same_rate(self) -> None:
         graph, _ = build_graph()
 
         rate = compositor.MIX_SAMPLE_RATE
         self.assertIn(
-            f"[0:a]aresample={rate}:async=1:first_pts=0[sa]", graph
+            f"[2:a]aresample={rate}:async=1:first_pts=0[mic]", graph
         )
         self.assertIn(
-            f"[1:a]aresample={rate}:async=1:first_pts=0[cr]", graph
+            f"[3:a]aresample={rate}:async=1:first_pts=0[sys]", graph
         )
 
-    def test_resampled_streams_are_what_gets_mixed(self) -> None:
-        graph, _ = build_graph()
-
-        self.assertIn("[sa]", graph)
-        self.assertIn("[sa][cr]amix=inputs=2", graph)
-
-    def test_only_screen_audio_is_mapped_without_amix(self) -> None:
-        graph, label = build_graph(camera_has_audio=False)
-
-        self.assertNotIn("amix", graph)
-        self.assertEqual(label, "0:a")
-
-    def test_only_camera_audio_is_mapped_without_amix(self) -> None:
-        graph, label = build_graph(screen_has_audio=False)
-
-        self.assertNotIn("amix", graph)
-        self.assertEqual(label, "[1:a]")
-
-    def test_neither_input_has_audio(self) -> None:
-        graph, label = build_graph(
-            screen_has_audio=False, camera_has_audio=False
-        )
-
-        self.assertNotIn("amix", graph)
-        self.assertIsNone(label)
+    def test_the_track_titles_are_microphone_and_system_audio(self) -> None:
+        self.assertEqual(compositor.MIC_TRACK_TITLE, "Microphone")
+        self.assertEqual(compositor.SYSTEM_TRACK_TITLE, "System audio")
 
 
 class CameraOffsetTests(unittest.TestCase):
-    def test_positive_offset_delays_the_camera(self) -> None:
+    def test_positive_offset_delays_the_camera_video(self) -> None:
         graph, _ = build_graph(camera_offset=1.5)
 
         # The camera video is delayed before the overlay.
         self.assertIn("[1:v]setpts=PTS+1.500/TB,scale=320:-2[pip]", graph)
-        # The camera audio is delayed after resampling, then mixed.
-        self.assertIn(
-            f"[1:a]aresample={compositor.MIX_SAMPLE_RATE}:async=1:first_pts=0[cr]",
-            graph,
-        )
-        self.assertIn("[cr]adelay=1500:all=1[ca]", graph)
-        self.assertIn("[sa][ca]amix=inputs=2", graph)
 
-    def test_negative_offset_advances_the_camera(self) -> None:
+    def test_negative_offset_advances_the_camera_video(self) -> None:
         graph, _ = build_graph(camera_offset=-0.5)
 
-        self.assertIn("[1:v]trim=start=0.500,setpts=PTS-STARTPTS,", graph)
-        self.assertIn("[cr]atrim=start=0.500,asetpts=PTS-STARTPTS[ca]", graph)
-        self.assertIn("[sa][ca]amix=inputs=2", graph)
+        self.assertIn(
+            "[1:v]trim=start=0.500,setpts=PTS-STARTPTS,scale=320:-2[pip]", graph
+        )
+
+    def test_camera_offset_does_not_shift_any_audio(self) -> None:
+        # The camera file has no audio now, so its offset only moves video.
+        graph, _ = build_graph(camera_offset=1.5)
+
+        self.assertNotIn("adelay", graph)
+        self.assertNotIn("atrim", graph)
 
     def test_zero_offset_leaves_the_graph_unshifted(self) -> None:
         graph, _ = build_graph(camera_offset=0.0)
@@ -143,47 +137,187 @@ class CameraOffsetTests(unittest.TestCase):
         self.assertNotIn("setpts=PTS+", graph)
         self.assertNotIn("adelay", graph)
         self.assertNotIn("atrim", graph)
-        self.assertIn("[sa][cr]amix=inputs=2", graph)
+        self.assertNotIn("trim=", graph)
+
+
+class StreamOffsetTests(unittest.TestCase):
+    RATE = compositor.MIX_SAMPLE_RATE
+
+    def test_positive_mic_offset_delays_only_the_microphone(self) -> None:
+        graph, _ = build_graph(mic_offset=1.5)
+
+        self.assertIn(
+            f"[2:a]aresample={self.RATE}:async=1:first_pts=0,adelay=1500:all=1[mic]",
+            graph,
+        )
+        # The system audio is left alone.
+        self.assertIn(
+            f"[3:a]aresample={self.RATE}:async=1:first_pts=0[sys]", graph
+        )
+
+    def test_negative_mic_offset_trims_the_start_of_the_microphone(self) -> None:
+        graph, _ = build_graph(mic_offset=-0.5)
+
+        self.assertIn(
+            f"[2:a]aresample={self.RATE}:async=1:first_pts=0,"
+            "atrim=start=0.500,asetpts=PTS-STARTPTS[mic]",
+            graph,
+        )
+
+    def test_system_offset_shifts_only_the_system_audio(self) -> None:
+        graph, _ = build_graph(system_offset=0.25)
+
+        self.assertIn(
+            f"[3:a]aresample={self.RATE}:async=1:first_pts=0,adelay=250:all=1[sys]",
+            graph,
+        )
+        self.assertIn(
+            f"[2:a]aresample={self.RATE}:async=1:first_pts=0[mic]", graph
+        )
+
+    def test_negative_system_offset_trims_the_start_of_the_system_audio(self) -> None:
+        graph, _ = build_graph(system_offset=-0.25)
+
+        self.assertIn(
+            f"[3:a]aresample={self.RATE}:async=1:first_pts=0,"
+            "atrim=start=0.250,asetpts=PTS-STARTPTS[sys]",
+            graph,
+        )
+
+    def test_each_stream_has_its_own_independent_offset(self) -> None:
+        graph, _ = build_graph(
+            camera_offset=0.4, mic_offset=-0.1, system_offset=0.2
+        )
+
+        self.assertIn("[1:v]setpts=PTS+0.400/TB,scale=320:-2[pip]", graph)
+        self.assertIn("atrim=start=0.100,asetpts=PTS-STARTPTS[mic]", graph)
+        self.assertIn("adelay=200:all=1[sys]", graph)
+
+    def test_the_screen_is_the_reference_and_is_never_shifted(self) -> None:
+        graph, _ = build_graph(
+            camera_offset=1.0, mic_offset=1.0, system_offset=1.0
+        )
+
+        self.assertIn("[0:v][pip]overlay=", graph)
+        self.assertNotIn("[0:v]setpts", graph)
+        self.assertNotIn("[0:v]trim", graph)
+
+    def test_zero_audio_offsets_leave_both_tracks_unshifted(self) -> None:
+        graph, _ = build_graph(mic_offset=0.0, system_offset=0.0)
+
+        self.assertNotIn("adelay", graph)
+        self.assertNotIn("atrim", graph)
+
+
+def build_command(**overrides):
+    """Build the composite command for the four raw files."""
+    kwargs = dict(
+        ffmpeg="ffmpeg",
+        screen_path=Path("screen.mp4"),
+        camera_path=Path("camera.mp4"),
+        mic_path=Path("mic.wav"),
+        system_path=Path("system.wav"),
+        output=Path("final.mp4"),
+    )
+    kwargs.update(overrides)
+    return compositor.build_composite_command(**kwargs)
+
+
+def values_after(cmd, flag):
+    """Every value that follows `flag` in a command, in order."""
+    return [cmd[i + 1] for i, part in enumerate(cmd) if part == flag]
 
 
 class CompositeCommandTests(unittest.TestCase):
-    def test_command_maps_video_and_mixed_audio(self) -> None:
-        cmd = compositor.build_composite_command(
-            "ffmpeg",
-            Path("screen.mp4"),
-            Path("camera.mp4"),
-            Path("final.mp4"),
+    def test_command_reads_the_four_raw_files_in_order(self) -> None:
+        cmd = build_command()
+
+        self.assertEqual(
+            values_after(cmd, "-i"),
+            ["screen.mp4", "camera.mp4", "mic.wav", "system.wav"],
         )
 
-        self.assertEqual(cmd[cmd.index("-map") + 1], "[v]")
-        self.assertIn("[a]", cmd)
+    def test_command_maps_video_and_two_separate_audio_tracks(self) -> None:
+        cmd = build_command()
+
+        self.assertEqual(values_after(cmd, "-map"), ["[v]", "[mic]", "[sys]"])
         self.assertIn("aac", cmd)
         self.assertIn("-shortest", cmd)
 
-    def test_command_keeps_the_bottom_right_overlay_by_default(self) -> None:
-        cmd = compositor.build_composite_command(
-            "ffmpeg",
-            Path("screen.mp4"),
-            Path("camera.mp4"),
-            Path("final.mp4"),
+    def test_command_does_not_mix_the_audio(self) -> None:
+        cmd = build_command()
+
+        self.assertNotIn("amix", " ".join(cmd))
+
+    def test_audio_tracks_are_titled(self) -> None:
+        cmd = build_command()
+
+        self.assertEqual(
+            values_after(cmd, "-metadata:s:a:0"), ["title=Microphone"]
         )
+        self.assertEqual(
+            values_after(cmd, "-metadata:s:a:1"), ["title=System audio"]
+        )
+
+    def test_the_microphone_is_the_default_track(self) -> None:
+        cmd = build_command()
+
+        self.assertEqual(values_after(cmd, "-disposition:a:0"), ["default"])
+        self.assertEqual(values_after(cmd, "-disposition:a:1"), ["0"])
+
+    def test_command_keeps_the_bottom_right_overlay_by_default(self) -> None:
+        cmd = build_command()
 
         self.assertIn("overlay=W-w-20:H-h-20", " ".join(cmd))
 
-    def test_command_without_audio_maps_no_audio(self) -> None:
-        cmd = compositor.build_composite_command(
-            "ffmpeg",
-            Path("screen.mp4"),
-            Path("camera.mp4"),
-            Path("final.mp4"),
-            screen_has_audio=False,
-            camera_has_audio=False,
+    def test_per_stream_offsets_reach_the_filter_graph(self) -> None:
+        cmd = build_command(camera_offset=0.4, mic_offset=0.5, system_offset=-0.2)
+        graph = values_after(cmd, "-filter_complex")[0]
+
+        self.assertIn("setpts=PTS+0.400/TB", graph)
+        self.assertIn("adelay=500:all=1[mic]", graph)
+        self.assertIn("atrim=start=0.200,asetpts=PTS-STARTPTS[sys]", graph)
+
+    def test_the_output_is_the_last_argument(self) -> None:
+        cmd = build_command(output=Path("final.part.mp4"))
+
+        self.assertEqual(cmd[-1], "final.part.mp4")
+
+
+class CompositeInputsTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.tmp = Path(self._tmp.name)
+        for name in ("screen.mp4", "camera.mp4", "mic.wav", "system.wav"):
+            (self.tmp / name).write_bytes(b"x")
+
+    def composite(self):
+        return compositor.composite(
+            self.tmp / "screen.mp4",
+            self.tmp / "camera.mp4",
+            self.tmp / "mic.wav",
+            self.tmp / "system.wav",
+            self.tmp / "final.mp4",
         )
 
-        self.assertNotIn("aac", cmd)
-        self.assertNotIn("-shortest", cmd) if False else self.assertIn(
-            "-shortest", cmd
-        )
+    def test_a_missing_microphone_file_is_reported_by_name(self) -> None:
+        (self.tmp / "mic.wav").unlink()
+
+        with self.assertRaises(compositor.CompositeError) as caught:
+            self.composite()
+
+        self.assertIn("microphone", str(caught.exception))
+        self.assertIn("mic.wav", str(caught.exception))
+
+    def test_an_empty_system_audio_file_is_reported_by_name(self) -> None:
+        (self.tmp / "system.wav").write_bytes(b"")
+
+        with self.assertRaises(compositor.CompositeError) as caught:
+            self.composite()
+
+        self.assertIn("system audio", str(caught.exception))
+        self.assertIn("system.wav", str(caught.exception))
 
 
 # A fake ffmpeg that prints a recorded volumedetect log and exits 0, so

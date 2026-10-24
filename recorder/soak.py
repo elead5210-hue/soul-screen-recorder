@@ -11,13 +11,16 @@ checks the finished session folder. While recording it samples, every few
 seconds:
 
   - the CPU use and memory of every ffmpeg process the app started,
-  - the size of camera.mp4 and screen.mp4 (they must keep growing),
+  - the size of the four raw files camera.mp4, screen.mp4, mic.wav and
+    system.wav (they must keep growing),
   - whether the app's own threads stay responsive (a heartbeat thread that
     must wake up on time, how long a controller call takes, and that the
     capture monitor thread is still alive).
 
-Afterwards the session is verified with recorder.verify, including the audio
-levels, the audio-versus-video lengths (dropped audio) and a minimum length,
+Afterwards the session is verified with recorder.verify (all five files:
+the four raw recordings and final.mp4), including the audio levels, the
+audio-versus-video lengths (dropped audio), the two audio tracks of
+final.mp4 and a minimum length,
 and a PASS / FAIL report with the measurements is printed. Exit status:
 0 = every check passed, 1 = a check failed, 2 = the test could not be run
 (or was given bad options), 130 = interrupted with Ctrl-C (the recording is
@@ -62,6 +65,10 @@ STOP_TIMEOUT_MIN_SECONDS = 600.0
 LENGTH_TOLERANCE_SECONDS = 10.0
 
 MONITOR_THREAD_NAME = "capture-monitor"
+
+# While recording there is one ffmpeg process per raw stream: camera, screen,
+# microphone and system audio.
+EXPECTED_FFMPEG_PROCESSES = 4
 
 
 # ---- measurements ----------------------------------------------------------
@@ -236,6 +243,8 @@ def run_soak(
             names = {
                 session.camera_path.name: session.camera_path,
                 session.screen_path.name: session.screen_path,
+                session.mic_path.name: session.mic_path,
+                session.system_path.name: session.system_path,
             }
         log(f"Recording for {minutes:g} minutes into {data.session_folder} ...")
 
@@ -345,10 +354,10 @@ def evaluate(
             f"recorded {format_elapsed(data.recorded_seconds)} with no error",
         ))
 
-    # 2. The recording finished: Done, with all three files.
+    # 2. The recording finished: Done, with all four raw files and final.mp4.
     done = data.final_state == RecorderState.DONE
     results.append(CheckResult(
-        "Finished with three files", done,
+        "Finished with all files", done,
         (data.final_message or "Done") if done
         else f"ended in the {data.final_state.name if data.final_state else 'unknown'} state"
         + (f": {(data.final_message or '').splitlines()[0]}" if data.final_message else ""),
@@ -376,11 +385,13 @@ def evaluate(
             f"(limits {max_memory_mb:.0f} MB and {max_memory_growth_mb:.0f} MB)",
         ))
 
-        # 5. Both ffmpeg processes stayed alive the whole time.
+        # 5. All four ffmpeg processes (camera, screen, mic, system) stayed
+        # alive the whole time.
         fewest = min(s.ffmpeg_count for s in samples)
         results.append(CheckResult(
-            "Both captures kept running", fewest >= 2,
-            f"at least {fewest} ffmpeg process(es) in every sample (expected 2)",
+            "All four captures kept running", fewest >= EXPECTED_FFMPEG_PROCESSES,
+            f"at least {fewest} ffmpeg process(es) in every sample "
+            f"(expected {EXPECTED_FFMPEG_PROCESSES})",
         ))
 
         # 6. The raw files kept growing.
@@ -418,7 +429,10 @@ def evaluate(
         check = data.verification
         failed = [f"{f.name} {f.detail}" for f in check.failed]
         warned = [f"{f.name} {f.detail}" for f in check.files if f.ok and f.warning]
-        detail = "all checks passed (playable, audio audible, lengths match)"
+        detail = (
+            "all checks passed (playable, audio audible, lengths match, "
+            "two audio tracks in final.mp4)"
+        )
         if failed:
             detail = "; ".join(failed)
         elif warned:

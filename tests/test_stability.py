@@ -65,6 +65,32 @@ class DiskSpaceEstimateTests(unittest.TestCase):
         without = stability.estimate_recording_bytes(30, "medium", False)
         self.assertGreater(with_final, without)
 
+    def test_the_two_wav_files_are_counted_at_their_uncompressed_rate(self):
+        # mic.wav and system.wav are 48 kHz, 16-bit, stereo PCM.
+        self.assertEqual(stability.CAPTURE_AUDIO_FILES, 2)
+        self.assertEqual(stability.CAPTURE_AUDIO_BPS, 48_000 * 16 * 2)
+        screen = stability.parse_bitrate(stability.QUALITY_BITRATES["medium"])
+        camera = stability.parse_bitrate(stability.CAMERA_BITRATES["medium"])
+        audio = stability.CAPTURE_AUDIO_FILES * stability.CAPTURE_AUDIO_BPS
+        per_second = stability.recording_bytes_per_second("medium", False)
+        # The camera and screen files are video only, so only the two WAV
+        # files add audio to the raw recordings.
+        self.assertAlmostEqual(per_second, (screen + camera + audio) / 8)
+
+    def test_the_final_video_counts_two_separate_audio_tracks(self):
+        screen = stability.parse_bitrate(stability.QUALITY_BITRATES["medium"])
+        with_final = stability.recording_bytes_per_second("medium", True)
+        without = stability.recording_bytes_per_second("medium", False)
+        tracks = stability.FINAL_AUDIO_TRACKS * stability.FINAL_AUDIO_BPS
+        self.assertEqual(stability.FINAL_AUDIO_TRACKS, 2)
+        self.assertAlmostEqual(with_final - without, (screen + tracks) / 8)
+
+    def test_wav_audio_costs_more_than_the_old_compressed_audio(self):
+        # The old layout kept two 160 kbit/s AAC tracks in the raw files.
+        old_audio = 2 * 160_000
+        new_audio = stability.CAPTURE_AUDIO_FILES * stability.CAPTURE_AUDIO_BPS
+        self.assertGreater(new_audio, old_audio)
+
     def test_estimate_includes_the_safety_margin(self):
         per_second = stability.recording_bytes_per_second("medium")
         expected = int(60 * 60 * per_second * stability.SAFETY_MARGIN)
@@ -137,7 +163,7 @@ class MonitorTestCase(unittest.TestCase):
         self.folder = Path(self._tmp.name)
         self.clock = FakeClock()
         self.free = 100 * GIB
-        self.alive = {"camera": True, "screen": True}
+        self.alive = {name: True for name in self.STREAMS}
         self.reported = []
         self.monitors = []
 
@@ -146,15 +172,29 @@ class MonitorTestCase(unittest.TestCase):
         path.write_bytes(b"x" * size)
         return path
 
-    def make_monitor(self, on_problem=None, **kwargs) -> CaptureMonitor:
+    # The four streams that are recorded, and the raw file each one writes.
+    STREAMS = ("camera", "screen", "mic", "system")
+    FILENAMES = {
+        "camera": "camera.mp4",
+        "screen": "screen.mp4",
+        "mic": "mic.wav",
+        "system": "system.wav",
+    }
+
+    def make_monitor(self, on_problem=None, empty=(), **kwargs) -> CaptureMonitor:
+        """Watch all four streams; `empty` names streams whose file starts empty."""
         watches = [
             Watch(
-                "camera",
-                self.make_file("camera.mp4"),
-                lambda: self.alive["camera"],
-                explain_exit=lambda: "The camera was unplugged.",
-            ),
-            Watch("screen", self.make_file("screen.mp4"), lambda: self.alive["screen"]),
+                name,
+                self.make_file(self.FILENAMES[name], 0 if name in empty else 100),
+                lambda name=name: self.alive[name],
+                explain_exit=(
+                    (lambda: "The camera was unplugged.")
+                    if name == "camera"
+                    else None
+                ),
+            )
+            for name in self.STREAMS
         ]
         monitor = CaptureMonitor(
             watches,
@@ -178,14 +218,19 @@ class MonitorTestCase(unittest.TestCase):
         with open(self.folder / name, "ab") as handle:
             handle.write(b"x" * extra)
 
+    def grow_all(self, *skip: str) -> None:
+        """Grow the file of every stream except the ones named in `skip`."""
+        for stream in self.STREAMS:
+            if stream not in skip:
+                self.grow(self.FILENAMES[stream])
+
 
 class HealthyRecordingTests(MonitorTestCase):
     def test_nothing_reported_while_healthy(self):
         monitor = self.make_monitor()
         for _ in range(5):
             self.clock.now += 5
-            self.grow("camera.mp4")
-            self.grow("screen.mp4")
+            self.grow_all()
             self.assertEqual(monitor.check_once(), [])
         self.assertEqual(self.reported, [])
         self.assertEqual(monitor.problems, [])
@@ -228,6 +273,42 @@ class ProcessExitTests(MonitorTestCase):
         monitor.check_once()
         self.assertEqual({p.source for p in self.reported}, {"camera", "screen"})
 
+    def test_a_microphone_exit_names_the_microphone_stream(self):
+        monitor = self.make_monitor()
+        self.alive["mic"] = False
+        new = monitor.check_once()
+        self.assertEqual(len(new), 1)
+        self.assertEqual(new[0].kind, ProblemKind.PROCESS_EXITED)
+        self.assertEqual(new[0].source, "mic")
+        self.assertTrue(new[0].fatal)
+        self.assertIn("mic recording stopped unexpectedly", new[0].message)
+
+    def test_a_system_audio_exit_names_the_system_stream(self):
+        monitor = self.make_monitor()
+        self.alive["system"] = False
+        new = monitor.check_once()
+        self.assertEqual(len(new), 1)
+        self.assertEqual(new[0].kind, ProblemKind.PROCESS_EXITED)
+        self.assertEqual(new[0].source, "system")
+        self.assertTrue(new[0].fatal)
+        self.assertIn("system recording stopped unexpectedly", new[0].message)
+
+    def test_a_failure_in_any_one_of_the_four_streams_is_fatal(self):
+        for stream in self.STREAMS:
+            with self.subTest(stream=stream):
+                self.alive = {name: True for name in self.STREAMS}
+                monitor = self.make_monitor()
+                self.alive[stream] = False
+                new = monitor.check_once()
+                self.assertEqual([(p.source, p.fatal) for p in new], [(stream, True)])
+
+    def test_all_four_streams_are_watched(self):
+        monitor = self.make_monitor()
+        for name in self.STREAMS:
+            self.alive[name] = False
+        monitor.check_once()
+        self.assertEqual({p.source for p in self.reported}, set(self.STREAMS))
+
     def test_exit_after_stop_is_not_a_failure(self):
         monitor = self.make_monitor()
         monitor.stop()
@@ -241,10 +322,10 @@ class StallTests(MonitorTestCase):
     def test_a_file_that_stops_growing_is_reported(self):
         monitor = self.make_monitor()
         self.clock.now = 10
-        self.grow("camera.mp4")  # camera keeps growing, screen does not
+        self.grow_all("screen")  # every stream keeps growing except the screen
         self.assertEqual(monitor.check_once(), [])
         self.clock.now = 31
-        self.grow("camera.mp4")
+        self.grow_all("screen")
         new = monitor.check_once()
         self.assertEqual(len(new), 1)
         self.assertEqual(new[0].kind, ProblemKind.FILE_STALLED)
@@ -256,8 +337,7 @@ class StallTests(MonitorTestCase):
         monitor = self.make_monitor()
         for _ in range(6):
             self.clock.now += 20
-            self.grow("camera.mp4")
-            self.grow("screen.mp4")
+            self.grow_all()
             self.assertEqual(monitor.check_once(), [])
 
     def test_stalled_just_below_the_limit_is_fine(self):
@@ -266,17 +346,32 @@ class StallTests(MonitorTestCase):
         self.assertEqual(monitor.check_once(), [])
 
     def test_an_empty_file_is_described_as_not_written(self):
-        monitor = self.make_monitor()
-        (self.folder / "screen.mp4").write_bytes(b"")
-        # The monitor started when screen.mp4 already had data, so restart
-        # watching with an empty file.
-        monitor.stop()
-        fresh = self.make_monitor()
+        monitor = self.make_monitor(empty=("screen",))
         self.clock.now += 31
-        self.grow("camera.mp4")
-        new = fresh.check_once()
+        self.grow_all("screen")
+        new = monitor.check_once()
         self.assertEqual([p.source for p in new], ["screen"])
         self.assertIn("has not been written", new[0].message)
+
+    def test_a_stalled_microphone_file_is_reported_by_name(self):
+        monitor = self.make_monitor()
+        self.clock.now += 31
+        self.grow_all("mic")
+        new = monitor.check_once()
+        self.assertEqual([p.source for p in new], ["mic"])
+        self.assertEqual(new[0].kind, ProblemKind.FILE_STALLED)
+        self.assertTrue(new[0].fatal)
+        self.assertIn("mic file has not grown", new[0].message)
+
+    def test_a_stalled_system_audio_file_is_reported_by_name(self):
+        monitor = self.make_monitor()
+        self.clock.now += 31
+        self.grow_all("system")
+        new = monitor.check_once()
+        self.assertEqual([p.source for p in new], ["system"])
+        self.assertEqual(new[0].kind, ProblemKind.FILE_STALLED)
+        self.assertTrue(new[0].fatal)
+        self.assertIn("system file has not grown", new[0].message)
 
 
 class DiskSpaceTests(MonitorTestCase):
