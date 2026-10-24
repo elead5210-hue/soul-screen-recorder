@@ -1,13 +1,16 @@
-"""Check that a recording session holds three playable video files.
+"""Check that a recording session holds its five playable files.
 
-A finished session folder should contain camera.mp4, screen.mp4 and
-final.mp4. For each one this module checks that the file
+A finished session folder should contain camera.mp4 and screen.mp4 (video
+only), mic.wav and system.wav (audio only) and final.mp4. For each one this
+module checks that the file
 
   1. exists and is not empty,
-  2. opens in ffmpeg and has a video stream, and
-  3. really decodes: the first video frame is read and decoded.
+  2. opens in ffmpeg and has the stream it should (video for the .mp4 files,
+     audio for the .wav files), and
+  3. really decodes: the first video frame (or the first second of audio) is
+     read and decoded.
 
-Usage from a terminal (exit status 0 = all three files are playable):
+Usage from a terminal (exit status 0 = all five files are playable):
 
     python3 -m recorder.verify recordings/2026-10-21_14-46
 
@@ -19,17 +22,19 @@ is measured too, with ffmpeg's volumedetect filter:
 
     python3 -m recorder.verify recordings/2026-10-21_14-46 --audio
 
-  - final.mp4 must have an audio track that is not silent (the mic and the
-    system audio mixed together). Missing or silent audio fails the check; a
-    quiet but present track passes with a WARN line.
-  - camera.mp4 (the microphone) and screen.mp4 (the system audio) are
-    reported too, but silence there is only a WARN: nothing may have been
-    playing, or nobody may have spoken.
+  - final.mp4 must have exactly two audio tracks (the microphone first, then
+    the system audio), which are not mixed. A missing track fails the check;
+    a silent or quiet track is a WARN, but the check fails if both tracks are
+    silent.
+  - mic.wav (the microphone) and system.wav (the system audio) are reported
+    too, but silence there is only a WARN: nothing may have been playing, or
+    nobody may have spoken.
 
 With the --lengths option (or verify_session(..., with_lengths=True)) the
-length of each file's audio is compared with the length of its video, which
-catches audio that was dropped during a long recording: audio a couple of
-seconds shorter is a WARN, clearly shorter is a FAIL. With --min-minutes the
+length of final.mp4's audio is compared with the length of its video, and the
+length of mic.wav and system.wav with the length of the screen recording,
+which catches audio that was dropped during a long recording: audio a couple
+of seconds shorter is a WARN, clearly shorter is a FAIL. With --min-minutes the
 session must also be at least that long, so a long session can be confirmed
 complete:
 
@@ -48,10 +53,25 @@ from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
 
 from recorder.devices import find_ffmpeg
-from recorder.session import CAMERA_FILENAME, FINAL_FILENAME, SCREEN_FILENAME
+from recorder.session import (
+    CAMERA_FILENAME,
+    FINAL_FILENAME,
+    MIC_FILENAME,
+    SCREEN_FILENAME,
+    SYSTEM_FILENAME,
+)
 
 # The files a finished session must contain, in the order they are reported.
-EXPECTED_FILES: Tuple[str, ...] = (CAMERA_FILENAME, SCREEN_FILENAME, FINAL_FILENAME)
+EXPECTED_FILES: Tuple[str, ...] = (
+    CAMERA_FILENAME,
+    SCREEN_FILENAME,
+    MIC_FILENAME,
+    SYSTEM_FILENAME,
+    FINAL_FILENAME,
+)
+
+# The audio tracks final.mp4 must have, in track order. They are never mixed.
+FINAL_TRACK_LABELS: Tuple[str, ...] = ("microphone", "system audio")
 
 # Opening a file and decoding one frame only reads its start, so this is a
 # generous limit that is never reached for a healthy file.
@@ -81,6 +101,8 @@ _TIME_RE = re.compile(r"time=\s*(\d+):(\d+):(\d+(?:\.\d+)?)")
 _DURATION_RE = re.compile(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)")
 _MEAN_RE = re.compile(r"mean_volume:\s*(-?(?:\d+(?:\.\d+)?|inf))\s*dB")
 _PEAK_RE = re.compile(r"max_volume:\s*(-?(?:\d+(?:\.\d+)?|inf))\s*dB")
+# One line of `ffmpeg -i` output per audio stream, e.g. "Stream #0:1(und): Audio: aac".
+_AUDIO_STREAM_RE = re.compile(r"Stream #\d+:\d+[^\n]*?: Audio:")
 
 
 class VerifyError(Exception):
@@ -99,8 +121,11 @@ class FileCheck:
     duration_seconds: Optional[float] = None
     # A passed check that still deserves attention (shown as WARN).
     warning: bool = False
-    # "file" for a video file check, "audio" for a sound level check.
+    # "file" for a file check, "audio" for a sound level check, "length" for
+    # a length check.
     kind: str = "file"
+    # True when the sound was measured and found silent.
+    silent: bool = False
 
 
 @dataclass(frozen=True)
@@ -148,8 +173,16 @@ def format_duration(seconds: Optional[float]) -> str:
     return f"{minutes}:{secs:02d}"
 
 
+def _is_audio_file(path: Path) -> bool:
+    """True for the audio-only files of a session (mic.wav and system.wav)."""
+    return Path(path).suffix.lower() == ".wav"
+
+
 def check_file(path: Path, ffmpeg: Optional[str] = None) -> FileCheck:
-    """Check that one video file exists, opens and decodes its first frame.
+    """Check that one file exists, opens and decodes its first frame.
+
+    A .wav file (mic.wav, system.wav) is checked as audio: it must open and
+    its first second must decode. Any other file is checked as video.
 
     Never raises for a bad file: every problem becomes a FileCheck with
     ok=False and a plain-words detail. Raises VerifyError only if ffmpeg
@@ -174,11 +207,18 @@ def check_file(path: Path, ffmpeg: Optional[str] = None) -> FileCheck:
         except Exception as exc:
             raise VerifyError(str(exc))
 
+    audio_only = _is_audio_file(path)
+    if audio_only:
+        # An audio-only file: decode its first second.
+        stream_args = ["-map", "0:a:0", "-t", "1"]
+        stream, marker = "audio", "Audio:"
+    else:
+        stream_args = ["-map", "0:v:0", "-frames:v", "1"]
+        stream, marker = "video", "Video:"
     cmd = [
         ffmpeg, "-hide_banner", "-nostdin",
         "-i", str(path),
-        "-map", "0:v:0",
-        "-frames:v", "1",
+        *stream_args,
         "-f", "null", "-",
     ]
     try:
@@ -198,17 +238,18 @@ def check_file(path: Path, ffmpeg: Optional[str] = None) -> FileCheck:
     duration = _parse_duration(text)
 
     if "matches no streams" in text or (
-        result.returncode != 0 and "Video:" not in text and "moov atom" not in text
+        result.returncode != 0 and marker not in text and "moov atom" not in text
         and "Invalid data" not in text
     ):
-        return FileCheck(name, path, False, "has no video stream", duration)
+        return FileCheck(name, path, False, f"has no {stream} stream", duration)
     if "moov atom not found" in text or "Invalid data found" in text:
         return FileCheck(
             name, path, False, "cannot be opened and may be unplayable", duration
         )
     if result.returncode != 0:
         return FileCheck(
-            name, path, False, "was opened but its video could not be decoded", duration
+            name, path, False,
+            f"was opened but its {stream} could not be decoded", duration,
         )
 
     length = format_duration(duration)
@@ -247,8 +288,9 @@ def check_audio(
     label: str,
     ffmpeg: Optional[str] = None,
     required: bool = False,
+    track: int = 0,
 ) -> FileCheck:
-    """Measure the sound in a file's first audio track.
+    """Measure the sound in an audio track of a file (the first; `track` counts from 0).
 
     `label` says what the sound is (for example "microphone"). With
     required=True a missing, silent or unreadable track fails the check;
@@ -270,7 +312,7 @@ def check_audio(
     cmd = [
         ffmpeg, "-hide_banner", "-nostdin",
         "-i", str(path),
-        "-map", "0:a:0",
+        "-map", f"0:a:{int(track)}",
         "-vn",
         "-af", "volumedetect",
         "-f", "null", "-",
@@ -305,7 +347,10 @@ def check_audio(
     mean = f"mean {levels.mean_db:.1f} dB, " if levels.mean_db is not None else ""
     measured = f"{mean}peak {levels.peak_db:.1f} dB"
     if levels.peak_db <= SILENT_PEAK_DB:
-        return problem(f"is silent ({measured})")
+        return FileCheck(
+            name, path, not required, f"is silent ({measured})",
+            warning=True, kind="audio", silent=True,
+        )
     if levels.peak_db < QUIET_PEAK_DB:
         return FileCheck(
             name, path, True,
@@ -313,6 +358,81 @@ def check_audio(
             warning=True, kind="audio",
         )
     return FileCheck(name, path, True, f"is audible ({measured})", kind="audio")
+
+
+def count_audio_tracks(path: Path, ffmpeg: str) -> int:
+    """How many audio tracks a file has (0 if it cannot be read).
+
+    Raises VerifyError only if ffmpeg cannot be run.
+    """
+    try:
+        result = subprocess.run(
+            [ffmpeg, "-hide_banner", "-nostdin", "-i", str(path)],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            timeout=CHECK_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        return 0
+    except OSError as exc:
+        raise VerifyError(f"Could not run ffmpeg: {exc}")
+    # `ffmpeg -i` with no output exits non-zero but lists the streams.
+    text = result.stderr.decode("utf-8", errors="replace")
+    return len(_AUDIO_STREAM_RE.findall(text))
+
+
+def check_final_audio(path: Path, ffmpeg: Optional[str] = None) -> List[FileCheck]:
+    """Check the audio of final.mp4: two separate tracks, each measured.
+
+    The file must have exactly two audio tracks (microphone, then system
+    audio). Each track is measured on its own; silence in one is a WARN,
+    because nothing may have been playing or nobody may have spoken, but the
+    check fails when both tracks are silent. Raises VerifyError only if
+    ffmpeg itself is missing.
+    """
+    path = Path(path)
+    if ffmpeg is None:
+        try:
+            ffmpeg = find_ffmpeg()
+        except Exception as exc:
+            raise VerifyError(str(exc))
+
+    expected = len(FINAL_TRACK_LABELS)
+    count = count_audio_tracks(path, ffmpeg)
+    tracks_name = f"{path.name} audio tracks"
+    if count != expected:
+        plural = "" if count == 1 else "s"
+        return [
+            FileCheck(
+                tracks_name, path, False,
+                f"has {count} audio track{plural}, expected {expected} "
+                "(microphone and system audio)",
+                kind="audio",
+            )
+        ]
+
+    results = [
+        FileCheck(
+            tracks_name, path, True,
+            f"has {expected} separate audio tracks (microphone and system audio)",
+            kind="audio",
+        )
+    ]
+    levels = [
+        check_audio(path, label, ffmpeg, False, track=index)
+        for index, label in enumerate(FINAL_TRACK_LABELS)
+    ]
+    results.extend(levels)
+    if all(item.silent for item in levels):
+        results.append(
+            FileCheck(
+                f"{path.name} audio", path, False,
+                "has no sound in either track (both are silent)",
+                kind="audio",
+            )
+        )
+    return results
 
 
 def measure_stream_seconds(
@@ -355,12 +475,67 @@ def measure_stream_seconds(
     return max(0.0, int(hours) * 3600 + int(minutes) * 60 + float(seconds))
 
 
+def _check_audio_file_length(
+    path: Path,
+    name: str,
+    ffmpeg: str,
+    min_seconds: Optional[float],
+    reference_seconds: Optional[float],
+) -> FileCheck:
+    """Length check for an audio-only file (mic.wav, system.wav).
+
+    The audio is compared with `reference_seconds`, the length of the screen
+    recording, using the same AUDIO_GAP_* limits as check_length.
+    """
+    audio = measure_stream_seconds(path, "a", ffmpeg)
+    if audio is None:
+        return FileCheck(
+            name, path, min_seconds is None, "could not be measured",
+            warning=True, kind="length",
+        )
+
+    ok = True
+    warning = False
+    parts = [f"is {format_duration(audio)} long"]
+
+    if min_seconds is not None and audio < min_seconds - MIN_LENGTH_TOLERANCE_SECONDS:
+        ok = False
+        parts.append(f"which is shorter than the required {format_duration(min_seconds)}")
+
+    if reference_seconds is not None:
+        gap = reference_seconds - audio
+        fail_gap = max(AUDIO_GAP_FAIL_SECONDS, AUDIO_GAP_FAIL_RATIO * reference_seconds)
+        if gap > fail_gap:
+            ok = False
+            parts.append(
+                f"but the screen recording is {format_duration(reference_seconds)}, "
+                "so audio was probably dropped"
+            )
+        elif gap >= AUDIO_GAP_WARN_SECONDS:
+            warning = True
+            parts.append(
+                f"but the screen recording is {format_duration(reference_seconds)}, "
+                "so some audio may have been dropped"
+            )
+        else:
+            parts.append("and it matches the screen recording length")
+
+    detail = " ".join(parts) if len(parts) == 1 else ", ".join(parts)
+    return FileCheck(
+        name, path, ok, detail, duration_seconds=audio, warning=warning, kind="length"
+    )
+
+
 def check_length(
     path: Path,
     ffmpeg: Optional[str] = None,
     min_seconds: Optional[float] = None,
+    reference_seconds: Optional[float] = None,
 ) -> FileCheck:
     """Compare a file's audio length with its video length (dropped audio).
+
+    For an audio-only file (mic.wav, system.wav) the audio is compared with
+    `reference_seconds`, the length of the screen recording, instead.
 
     Audio clearly shorter than the video is a WARN or a FAIL (see the
     AUDIO_GAP_* values). With `min_seconds` the video must also be at least
@@ -378,6 +553,11 @@ def check_length(
             ffmpeg = find_ffmpeg()
         except Exception as exc:
             raise VerifyError(str(exc))
+
+    if _is_audio_file(path):
+        return _check_audio_file_length(
+            path, name, ffmpeg, min_seconds, reference_seconds
+        )
 
     video = measure_stream_seconds(path, "v", ffmpeg)
     if video is None:
@@ -448,23 +628,35 @@ def verify_session(
 
     if with_audio:
         # (what the sound is, whether missing or silent audio fails the check)
+        # camera.mp4 and screen.mp4 are video only, so they have no sound to
+        # measure; final.mp4 is checked track by track.
         audio_kinds = {
-            CAMERA_FILENAME: ("microphone", False),
-            SCREEN_FILENAME: ("system audio", False),
-            FINAL_FILENAME: ("mic + system audio", True),
+            MIC_FILENAME: ("microphone", False),
+            SYSTEM_FILENAME: ("system audio", False),
         }
         playable = {f.name for f in files if f.ok}
         for name in names:
             if name in audio_kinds and name in playable:
                 label, required = audio_kinds[name]
                 files.append(check_audio(folder / name, label, ffmpeg, required))
+            elif name == FINAL_FILENAME and name in playable:
+                files.extend(check_final_audio(folder / name, ffmpeg))
 
     if with_lengths or min_minutes is not None:
         min_seconds = float(min_minutes) * 60 if min_minutes is not None else None
         playable_files = {f.name for f in files if f.ok and f.kind == "file"}
+        # The screen recording is the reference length for mic.wav and
+        # system.wav, so it must be measured before them (EXPECTED_FILES
+        # lists it first).
+        screen_seconds: Optional[float] = None
         for name in names:
             if name in playable_files:
-                files.append(check_length(folder / name, ffmpeg, min_seconds))
+                result = check_length(
+                    folder / name, ffmpeg, min_seconds, screen_seconds
+                )
+                files.append(result)
+                if name == SCREEN_FILENAME and result.duration_seconds:
+                    screen_seconds = result.duration_seconds
 
     return SessionCheck(folder=folder, files=tuple(files))
 
@@ -485,7 +677,7 @@ def format_report(check: SessionCheck) -> str:
     if check.ok:
         lines.append(f"All {len(check.video_files)} files are playable.")
         if audio:
-            lines.append("The final video's audio is audible.")
+            lines.append("The audio checks passed.")
         if any(f.warning for f in check.files):
             lines.append("Check the WARN lines above.")
     else:
@@ -500,7 +692,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python3 -m recorder.verify",
         description=(
-            "Check that a session folder holds three playable files: "
+            "Check that a session folder holds its five playable files: "
             f"{', '.join(EXPECTED_FILES)}."
         ),
     )
@@ -513,16 +705,18 @@ def build_parser() -> argparse.ArgumentParser:
         "--audio",
         action="store_true",
         help=(
-            "also measure the sound: final.mp4 must have audible audio, and the "
-            "microphone (camera.mp4) and system audio (screen.mp4) are reported"
+            "also measure the sound: final.mp4 must have two audio tracks "
+            "(microphone and system audio), and mic.wav and system.wav are "
+            "reported"
         ),
     )
     parser.add_argument(
         "--lengths",
         action="store_true",
         help=(
-            "also compare each file's audio length with its video length, to "
-            "catch audio that was dropped during the recording"
+            "also check lengths: final.mp4's audio against its video, and "
+            "mic.wav and system.wav against the screen recording, to catch "
+            "audio that was dropped during the recording"
         ),
     )
     parser.add_argument(
