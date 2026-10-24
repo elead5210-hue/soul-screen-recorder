@@ -1,8 +1,8 @@
 # Soul Screen Recorder
 
-A macOS app (Python) that records the screen and the presenter as two separate streams, then combines them into one video with the presenter in a picture-in-picture (bottom right by default; the size and corner can be changed in [Settings](#settings)).
+A macOS app (Python) that records the screen, the presenter's camera, the microphone and the system audio as four separate streams, then combines them into one video with the presenter in a picture-in-picture (bottom right by default; the size and corner can be changed in [Settings](#settings)).
 
-> **Current status (v1):** the window, the single Record/Stop button, the status indicator and the two ffmpeg captures are implemented. Record starts the camera and screen captures; Stop finalizes `camera.mp4` and `screen.mp4` in a timestamped folder and then automatically combines them into `final.mp4`: the screen as the main video, the presenter in a small bottom-right overlay, and the microphone and system audio mixed together.
+> **Current status (v1):** the window, the single Record/Stop button, the status indicator and the four ffmpeg captures are implemented. Record starts the camera, screen, microphone and system-audio captures; Stop finalizes `camera.mp4`, `screen.mp4`, `mic.wav` and `system.wav` in a timestamped folder and then automatically combines them into `final.mp4`: the screen as the main video, the presenter in a small bottom-right overlay, and the microphone and system audio as two separate, selectable audio tracks (they are not mixed).
 
 ## Quick start
 
@@ -123,14 +123,16 @@ The app records with plain `ffmpeg` using its `avfoundation` input, launched fro
 
 - **Finding ffmpeg.** The app uses the first `ffmpeg` on your `PATH`. If none is found, it also tries the Homebrew locations `/opt/homebrew/bin/ffmpeg` and `/usr/local/bin/ffmpeg`, because apps launched from the Finder or an IDE may not have Homebrew on their `PATH`. If ffmpeg is not installed, the app shows an **Error** status explaining how to install it.
 - **Finding the devices.** When you click Record, the app runs `ffmpeg -f avfoundation -list_devices true -i ""`, reads the list ffmpeg prints, and picks the camera, microphone, screen and BlackHole device by name, using your choices from the **Devices** section of the window where you made one (see [Choosing devices](#choosing-devices)). You do not need to edit any device indexes.
-- **Two ffmpeg processes.** One ffmpeg process records the presenter (`camera.mp4`) and a second records the screen (`screen.mp4`). They are started back to back, so the two recordings begin within a fraction of a second of each other.
+- **Four ffmpeg processes.** Each stream is recorded by its own ffmpeg process, so a problem with one device is reported for that stream by name. The four are started back to back, so the recordings begin within a fraction of a second of each other.
 
   | Process | avfoundation input | Output |
   |---------|--------------------|--------|
-  | Presenter | webcam + microphone | `camera.mp4` |
-  | Screen | screen (with cursor) + BlackHole 2ch system audio | `screen.mp4` |
+  | Presenter | webcam (video only) | `camera.mp4` |
+  | Screen | screen with cursor (video only) | `screen.mp4` |
+  | Microphone | microphone (audio only) | `mic.wav` |
+  | System audio | BlackHole 2ch (audio only) | `system.wav` |
 
-  Both record at 30 fps, encode video with `h264_videotoolbox` (hardware encoding, see Low CPU use) and audio with AAC.
+  The two video files record at 30 fps and are encoded with `h264_videotoolbox` (hardware encoding, see Low CPU use). The two audio files are uncompressed 48 kHz 16-bit WAV, flushed to disk as they are recorded.
 - **Control.** ffmpeg runs in the background with its standard input connected to the app. To stop, the app writes `q` to that input (see Reliable file output).
 - **Log output.** ffmpeg's own log output is not shown in the terminal. It is collected in a temporary file for each process and discarded when the capture ends. If a capture fails to start or to stop cleanly, the app reads that log, explains the problem in plain words (see [Error messages](#error-messages)) and adds the last few lines of the log as detail in the **Error** message under the status.
 
@@ -143,14 +145,14 @@ Recording two streams at once, and combining them afterwards, stays light on the
 - **One place chooses the encoder.** `recorder/encoding.py` checks once per ffmpeg binary (with `ffmpeg -encoders`) that `h264_videotoolbox` is available, and both capture and compositing take their video encoder arguments from it.
 - **Fallback.** Some ffmpeg builds that are not from Homebrew are built without VideoToolbox. In that case the app automatically uses the software encoder `libx264` with the `veryfast` preset, so recording still works, just with higher CPU use. If the check itself cannot run, the app assumes hardware encoding, which is what the standard Homebrew ffmpeg provides.
 
-To check CPU use, open **Activity Monitor** (Applications > Utilities), select the **CPU** tab, and watch the two `ffmpeg` processes while recording. With hardware encoding they should each use only a small share of one core. If they use much more, run `ffmpeg -hide_banner -encoders | grep videotoolbox`: if nothing is listed, your ffmpeg has no VideoToolbox support, so reinstall it with `brew install ffmpeg`.
+To check CPU use, open **Activity Monitor** (Applications > Utilities), select the **CPU** tab, and watch the four `ffmpeg` processes while recording. With hardware encoding the two video processes should each use only a small share of one core, and the two audio processes almost nothing. If they use much more, run `ffmpeg -hide_banner -encoders | grep videotoolbox`: if nothing is listed, your ffmpeg has no VideoToolbox support, so reinstall it with `brew install ffmpeg`.
 
 ## Responsive interface
 
 The window never freezes. Everything slow runs on a background thread, and the window only draws the current status:
 
-- **Starting.** Clicking **Record** returns immediately and the status changes to **Starting...**. The sound output check, device detection, session folder creation, ffmpeg launch and the short check that both captures came up all happen in the background. When they finish, the status changes to **Recording...** (or to **Error** with a message if something failed).
-- **Stopping and compositing.** Clicking **Stop** switches to **Processing...** at once. Finalizing `camera.mp4` and `screen.mp4` and creating `final.mp4` run in a background thread, so even a long recording that takes a while to combine does not block the window.
+- **Starting.** Clicking **Record** returns immediately and the status changes to **Starting...**. The sound output check, device detection, session folder creation, ffmpeg launch and the short check that all four captures came up all happen in the background. When they finish, the status changes to **Recording...** (or to **Error** with a message if something failed).
+- **Stopping and compositing.** Clicking **Stop** switches to **Processing...** at once. Finalizing the four raw files and creating `final.mp4` run in a background thread, so even a long recording that takes a while to combine does not block the window.
 - **Closing.** If you confirm closing the window while the app is starting, recording or processing, the window stays responsive and shows **Saving files...** while the captures are stopped in the background. It closes by itself when the files are saved.
 
 ## Choosing devices
@@ -335,7 +337,7 @@ When something goes wrong, the **Error** status shows a bold sentence saying wha
 | The device is used by another app | "The camera or microphone is being used by another app. Close the other app (a video call, for example) and try again." | Close the other app and click **Record** again. |
 | The device does not support the recording settings | "The camera or microphone does not support the recording settings (30 fps). Choose a different one in the Devices section." | Pick another camera or screen in the Devices section. |
 | Low disk space before recording | "Low disk space: only 512 MB free where recordings are saved (recordings), and at least 1024 MB is needed to record. Free up some space (empty the Trash or delete files you no longer need) and try again." | Free up space, then click **Record**. Nothing was recorded. |
-| The disk fills up during recording or compositing | "The disk is full, so the recording could not be written. Free up some space (empty the Trash or delete files you no longer need) and record again." | Free up space. Everything recorded before the disk filled up may still be playable, and `camera.mp4` and `screen.mp4` are never deleted by the app. If only `final.mp4` failed, create it again with `recorder.recomposite`. |
+| The disk fills up during recording or compositing | "The disk is full, so the recording could not be written. Free up some space (empty the Trash or delete files you no longer need) and record again." | Free up space. Everything recorded before the disk filled up may still be playable, and the four raw files (`camera.mp4`, `screen.mp4`, `mic.wav` and `system.wav`) are never deleted by the app. If only `final.mp4` failed, create it again with `recorder.recomposite`. |
 | The recordings folder cannot be written | "The recordings folder cannot be written to. Check that the folder exists and that you have permission to save files there, or run the app from a different folder." | Run the app from a folder you can write to. |
 
 A problem the app does not recognise is shown with its own description and the last lines of ffmpeg's log, so it is never hidden behind a generic message. Messages from the sound output check and the permission check are described in [Sound output check](#sound-output-check) and [Permission check](#permission-check).
@@ -346,35 +348,37 @@ Each recording gets its own timestamped folder inside the output folder. By defa
 
 ```
 recordings/2026-10-21_14-46/
-  camera.mp4    presenter: webcam + microphone
-  screen.mp4    screen + system audio (BlackHole)
-  final.mp4     screen with the presenter overlay, mic + system audio mixed
-  sync.json     audio/video sync: measured launch gap and the camera offset (see Audio/video sync)
+  camera.mp4    presenter: webcam video only
+  screen.mp4    screen video only
+  mic.wav       microphone audio only
+  system.wav    system audio only (BlackHole)
+  final.mp4     screen with the presenter overlay, plus two audio tracks: Microphone and System audio
+  sync.json     sync data: measured launch times and the camera, microphone and system-audio offsets (see Audio/video sync)
 ```
 
-In `final.mp4` the presenter is scaled to the width chosen in Settings (about 320 px by default) and placed in the chosen corner (bottom right by default) with a 20 px margin. `final.mp4` is written to a temporary file first and only renamed when ffmpeg succeeds, so a failed run never leaves a broken file. If compositing fails, the app shows the **Error** status, and `camera.mp4` and `screen.mp4` are still saved.
+In `final.mp4` the presenter is scaled to the width chosen in Settings (about 320 px by default) and placed in the chosen corner (bottom right by default) with a 20 px margin. The microphone and the system audio are **not mixed**: `final.mp4` has two separate AAC audio tracks, titled **Microphone** (track 1, played by default) and **System audio** (track 2), so each can be selected or levelled on its own. Most players play one audio track at a time, so use the player's audio-track menu (in VLC: Audio > Audio Track) to switch, or an editor that plays all tracks. `final.mp4` is written to a temporary file first and only renamed when ffmpeg succeeds, so a failed run never leaves a broken file. If compositing fails, the app shows the **Error** status, and the four raw files are still saved.
 
 If you start two recordings within the same minute, the second folder gets a `-2` suffix, so an earlier recording is never overwritten. The app refuses to start if less than 1 GB of disk space is free.
 
-`sync.json` is a small text file the app writes when a recording stops cleanly. It holds the measured start gap between the two captures and the fine-alignment offset used for `final.mp4` (see [Audio/video sync](#audiovideo-sync)).
+`sync.json` is a small text file the app writes when a recording stops cleanly. It holds the measured launch time of each of the four captures and the fine-alignment offsets (camera, microphone and system audio, each relative to the screen) used for `final.mp4` (see [Audio/video sync](#audiovideo-sync)). A session recorded by an older version of the app, with only `camera.mp4` and `screen.mp4`, still has a loadable `sync.json`, but it has no `mic.wav` or `system.wav`, so it cannot be re-composited.
 
-When a recording finishes, the **Done** status shows the folder it was saved to. **Done** is only shown when all three files passed the playable check (see [Acceptance test](#acceptance-test-three-playable-files)).
+When a recording finishes, the **Done** status shows the folder it was saved to. **Done** is only shown when all five files passed the playable check (see [Acceptance test](#acceptance-test-five-playable-files)).
 
 ## Reliable file output
 
 Stopping always tries to leave playable MP4 files behind, even when something goes wrong:
 
-- **Clean stop.** On Stop, the app sends `q` to both ffmpeg processes. ffmpeg then flushes its buffers and finishes the files properly. If a process has not exited after 20 seconds, it is terminated, and then force-killed if needed.
-- **Crash-resilient MP4s.** `camera.mp4` and `screen.mp4` are written as fragmented MP4 (a new playable fragment about every 2 seconds). If ffmpeg is force-closed, or the app or the Mac crashes during a recording, everything recorded up to the last fragment stays playable instead of the file being left without its index.
-- **Verification after stop.** Before reporting success, the app checks that both files exist, are not empty, and can be opened by ffmpeg. If a file is missing or unreadable, the **Error** status explains which one, and `final.mp4` is not created from it.
-- **Verification of the final video.** After compositing, the app opens `final.mp4` and decodes its first video frame too. If that fails, the **Error** status says the final video cannot be played, `camera.mp4` and `screen.mp4` are kept, and you can create it again with `recorder.recomposite`. The **Done** status is therefore only shown when all three files are playable.
-- **Safe closing.** If you close the window while starting, recording or processing, the app asks for confirmation. If you confirm, it stops the captures cleanly and waits for the files to finish saving (a few seconds, with the window still responsive) before quitting. If you close the window while the captures are still starting, they are stopped as soon as they are up, so no ffmpeg process is left running. `camera.mp4` and `screen.mp4` are kept, but `final.mp4` is not created on quit; create it later with `recorder.recomposite` (see below).
+- **Clean stop.** On Stop, the app sends `q` to all four ffmpeg processes. ffmpeg then flushes its buffers and finishes the files properly. If a process has not exited after 20 seconds, it is terminated, and then force-killed if needed.
+- **Crash-resilient files.** `camera.mp4` and `screen.mp4` are written as fragmented MP4 (a new playable fragment about every 2 seconds). If ffmpeg is force-closed, or the app or the Mac crashes during a recording, everything recorded up to the last fragment stays playable instead of the file being left without its index. `mic.wav` and `system.wav` are written as WAV files that are flushed to disk as the sound arrives, so the sound captured so far is kept too (the file's length header is finalized on a clean stop).
+- **Verification after stop.** Before reporting success, the app checks that all four raw files exist, are not empty, and can be opened by ffmpeg with the right kind of stream (video in the MP4 files, audio in the WAV files). If a file is missing or unreadable, the **Error** status explains which one, and `final.mp4` is not created from it.
+- **Verification of the final video.** After compositing, the app opens `final.mp4` and decodes its first video frame too. If that fails, the **Error** status says the final video cannot be played, the four raw files are kept, and you can create it again with `recorder.recomposite`. The **Done** status is therefore only shown when all five files are playable.
+- **Safe closing.** If you close the window while starting, recording or processing, the app asks for confirmation. If you confirm, it stops the captures cleanly and waits for the files to finish saving (a few seconds, with the window still responsive) before quitting. If you close the window while the captures are still starting, they are stopped as soon as they are up, so no ffmpeg process is left running. the four raw files are kept, but `final.mp4` is not created on quit; create it later with `recorder.recomposite` (see below).
 
 Quitting the app in other ways, such as force-quitting or pressing Ctrl+C in the terminal, cannot stop ffmpeg cleanly. The fragmented format means the recording up to that moment should still be playable.
 
 ## Raw files are kept
 
-Every session folder keeps all three files: `camera.mp4`, `screen.mp4` and `final.mp4`. The raw `camera.mp4` and `screen.mp4` are never modified, deleted or overwritten by the app, including when compositing fails, so you can always create the final video again.
+Every session folder keeps all five files: `camera.mp4`, `screen.mp4`, `mic.wav`, `system.wav` and `final.mp4`. The four raw files (`camera.mp4`, `screen.mp4`, `mic.wav` and `system.wav`) are never modified, deleted or overwritten by the app, including when compositing fails, so you can always create the final video again.
 
 ### Re-compositing a session
 
@@ -391,54 +395,67 @@ By default this replaces `final.mp4` in that folder. Options:
 - `--quality high` sets the video quality preset: `low`, `medium` or `high` (default: the quality saved in Settings)
 - `--margin 30` sets the distance from the chosen corner in pixels (default 20)
 - `--output final_large_pip.mp4` writes a different file name inside the session folder and keeps the existing `final.mp4`
-- `--camera-offset 0.35` fine-aligns the presenter against the screen, in seconds (see Audio/video sync). It is saved to `sync.json`; when you leave it out, the offset already saved there is used
+- `--camera-offset 0.35` fine-aligns the presenter's video against the screen, in seconds (see Audio/video sync)
+- `--mic-offset -0.12` fine-aligns the microphone (`mic.wav`) against the screen, in seconds
+- `--system-offset 0.05` fine-aligns the system audio (`system.wav`) against the screen, in seconds
 
-The new file is written to a temporary file first and renamed only when ffmpeg succeeds, so a failed run never damages an existing `final.mp4`.
+Each offset you give is saved to `sync.json` once the new video has been made; an offset you leave out uses the value already saved there (0 if none). Positive values delay that stream and negative values make it earlier. The screen is the reference and is never shifted.
+
+All four raw files must be present: a session recorded by an older version of the app (only `camera.mp4` and `screen.mp4`) cannot be re-composited, and the tool says which file is missing. The tool refuses to write over any of the raw files, even with `--output`. The new file is written to a temporary file first and renamed only when ffmpeg succeeds, so a failed run never damages an existing `final.mp4`.
 
 ## Audio/video sync
 
-The presenter (`camera.mp4`) and the screen (`screen.mp4`) are recorded by two separate ffmpeg processes, so they never start at exactly the same instant.
+The presenter (`camera.mp4`), the screen (`screen.mp4`), the microphone (`mic.wav`) and the system audio (`system.wav`) are recorded by four separate ffmpeg processes, so they never start at exactly the same instant.
 
-- **Back-to-back start.** Both commands are fully built first, and the two processes are then launched one right after the other with nothing in between, so they start within a fraction of a second of each other.
-- **Shared audio rate.** When `final.mp4` is made, both audio inputs are resampled to one shared rate with timestamp correction (`aresample` with `async`), so the microphone and system audio stay aligned over long recordings instead of drifting apart in the mix.
-- **Launch gap.** The app times each launch and, after a clean stop, saves the difference to `sync.json` as `launch_gap_seconds` (positive means the screen process was launched after the camera process). It is for information and troubleshooting only and is not applied automatically, because the time ffmpeg needs to open a camera or screen varies from one recording to the next.
-- **Camera offset.** `camera_offset_seconds` in `sync.json` is the correction applied when `final.mp4` is made. It starts at `0`, so nothing is shifted until you set it. It moves the presenter's video and microphone together, relative to the screen and system audio. **Positive** values delay the presenter (they appear later), **negative** values make the presenter earlier.
+- **Back-to-back start.** All four commands are fully built first, and the four processes are then launched one right after the other with nothing in between, so they start within a fraction of a second of each other.
+- **Shared audio rate.** When `final.mp4` is made, both audio files are resampled to one shared rate with timestamp correction (`aresample` with `async`), so the microphone and system audio stay aligned over long recordings instead of drifting apart. They are then written as two separate tracks and never mixed.
+- **Launch times.** The app times each launch and, after a clean stop, saves to `sync.json` how long after the first process each stream was launched (`launch_offsets_seconds`, with a value for `camera`, `screen`, `mic` and `system`; the first one launched is `0`). It also saves `launch_gap_seconds`, the older single number (positive means the screen process was launched after the camera process). These are for information and troubleshooting only and are not applied automatically, because the time ffmpeg needs to open a device varies from one recording to the next.
+- **Per-stream offsets.** `camera_offset_seconds`, `mic_offset_seconds` and `system_offset_seconds` in `sync.json` are the corrections applied when `final.mp4` is made, each relative to the screen, which is the reference and is never shifted. They start at `0`, so nothing is shifted until you set them. The camera offset moves the presenter's video, the microphone offset moves `mic.wav` and the system offset moves `system.wav`. **Positive** values delay that stream (it appears or sounds later), **negative** values make it earlier.
 
 `sync.json` looks like this:
 
 ```json
 {
   "launch_gap_seconds": 0.0312,
-  "camera_offset_seconds": 0.0
+  "launch_offsets_seconds": {
+    "camera": 0.0,
+    "screen": 0.0312,
+    "mic": 0.0655,
+    "system": 0.0701
+  },
+  "camera_offset_seconds": 0.0,
+  "mic_offset_seconds": 0.0,
+  "system_offset_seconds": 0.0
 }
 ```
 
-If `sync.json` is missing or damaged, the offset is treated as `0`, so it can never stop a recording from being combined.
+If `sync.json` is missing or damaged, the offsets are treated as `0`, so it can never stop a recording from being combined. A `sync.json` saved by the older two-file version has only `camera_offset_seconds`, which also covered the microphone (it was recorded inside `camera.mp4`); when such a file is loaded, the microphone offset takes the same value, so the alignment it described is kept.
 
 ### Measuring an offset with a clap marker
 
 If the presenter looks out of step with what is happening on screen, measure the gap with a clap:
 
 1. Start recording and, in view of the camera, clap your hands once at the very moment something visible and audible happens on screen (for example a click sound with a flash, a metronome or a test video with a beep). Do this near the start, and again near the end for a long recording.
-2. Stop the recording and open `camera.mp4` and `screen.mp4` in a video player or editor that shows exact times and lets you step frame by frame (QuickTime Player, VLC, iMovie, DaVinci Resolve and similar). A waveform view makes the clap easy to spot.
-3. In `camera.mp4`, note the time of the clap (the frame where your hands meet, or the spike in the audio). In `screen.mp4`, note the time of the matching event (the flash or the beep).
-4. Subtract: **offset = screen time - camera time**. For example, the clap is at 4.20 s in `camera.mp4` and the event at 3.85 s in `screen.mp4`, so the offset is -0.35 (the presenter has to be moved 0.35 s earlier).
+2. Stop the recording and open the raw files in a video editor that shows exact times, lets you step frame by frame and shows audio waveforms (DaVinci Resolve, iMovie and similar). Put `screen.mp4`, `camera.mp4`, `mic.wav` and `system.wav` on the timeline, all starting at 0.
+3. Note the time of the clap in `camera.mp4` (the frame where your hands meet) and as a spike in `mic.wav`. Note the time of the matching event in `screen.mp4` (the flash) and as a spike in `system.wav` (the beep).
+4. Subtract for each stream you want to align: **offset = screen time - stream time**. For example, the clap is at 4.20 s in `camera.mp4` and the event at 3.85 s in `screen.mp4`, so the camera offset is -0.35 (the presenter has to be moved 0.35 s earlier). If the clap spike is at 4.22 s in `mic.wav`, the microphone offset is 3.85 - 4.22 = -0.37. If the beep is at 3.90 s in `system.wav`, the system offset is 3.85 - 3.90 = -0.05.
 
 ### Applying the offset
 
-Re-create the final video with the offset:
+Re-create the final video with the offsets you measured (give only the ones you need):
 
 ```bash
-python3 -m recorder.recomposite recordings/2026-10-21_14-46 --camera-offset -0.35
+python3 -m recorder.recomposite recordings/2026-10-21_14-46 --camera-offset -0.35 --mic-offset -0.37 --system-offset -0.05
 ```
 
-The offset is applied to the new `final.mp4` and saved to the session's `sync.json`. Later runs of `recorder.recomposite` for that session reuse the saved offset unless you pass a different `--camera-offset`, and the app itself uses it whenever it composites that session. The raw files are never modified, so you can try different values until the result looks right. Offsets must be between -30 and 30 seconds.
+The offsets are applied to the new `final.mp4` and saved to the session's `sync.json`. Later runs of `recorder.recomposite` for that session reuse each saved offset unless you pass a different `--camera-offset`, `--mic-offset` or `--system-offset`, and the app itself uses it whenever it composites that session. The raw files are never modified, so you can try different values until the result looks right. Offsets must be between -30 and 30 seconds.
 
 ### Sync troubleshooting
 
-- **The presenter's lips move before the sound they make (or after it).** The microphone and camera are recorded together in `camera.mp4`, so they normally stay in step with each other. If they do not, use the clap method above on `camera.mp4` alone and check your camera and microphone settings.
+- **The presenter's lips move before the sound they make (or after it).** The camera and the microphone are separate recordings, so they can be slightly out of step. Measure the clap in `camera.mp4` and in `mic.wav` and set `--camera-offset` and `--mic-offset` so that both line up with the screen (see the clap method above).
+- **The system audio is early or late compared to what happens on screen.** Measure the beep in `system.wav` against the flash in `screen.mp4` and use `--system-offset`.
 - **The presenter is late compared to the screen.** Use a negative `--camera-offset`. If the presenter is early, use a positive one.
-- **The gap is different at the start and at the end.** That is drift, not a fixed offset, and one `--camera-offset` value corrects only a constant gap. Pick a value that suits the part of the video that matters most. To reduce drift in the system audio, tick **Drift Correction** for BlackHole 2ch in the Multi-Output Device (see System audio troubleshooting).
+- **The gap is different at the start and at the end.** That is drift, not a fixed offset, and one offset value per stream corrects only a constant gap. Pick a value that suits the part of the video that matters most. To reduce drift in the system audio, tick **Drift Correction** for BlackHole 2ch in the Multi-Output Device (see System audio troubleshooting).
 - **The offset is different every recording.** The time ffmpeg needs to open the camera and screen varies, so measure again for each recording that needs it.
 
 ## Install
@@ -542,12 +559,12 @@ Your device choices and Settings are saved in the same files as when you run fro
 ## How to use
 
 1. Click **Record** to start a recording. The status briefly shows **Starting...** while the devices are set up, then the button changes to **Stop**.
-2. Click **Stop** to finish. The app finalizes the two raw files and creates `final.mp4` while the button is disabled. Long recordings take longer to combine.
+2. Click **Stop** to finish. The app finalizes the four raw files and creates `final.mp4` while the button is disabled. Long recordings take longer to combine.
 3. When processing finishes, the status shows **Done** and the button returns to **Record** so you can start again.
 
-## Acceptance test: three playable files
+## Acceptance test: five playable files
 
-Clicking **Record** and then **Stop** must produce three playable files in a timestamped folder. To check this on your Mac:
+Clicking **Record** and then **Stop** must produce five playable files in a timestamped folder: the four raw recordings and `final.mp4`. To check this on your Mac:
 
 1. Start the app (`./run.sh`, or open the packaged app) and make sure the status is **Idle**, a Multi-Output Device is selected as the sound output, and the permissions are on.
 2. Click **Record**. Wait for **Recording...**, then talk for about 10 seconds and play some sound or a video so there is something to hear on the system audio.
@@ -558,27 +575,29 @@ Clicking **Record** and then **Stop** must produce three playable files in a tim
    python3 -m recorder.verify recordings/2026-10-21_14-46
    ```
 
-   It prints one line per file and exits with status 0 only if all three pass:
+   It prints one line per file and exits with status 0 only if all five pass:
 
    ```
    Session: recordings/2026-10-21_14-46
      [PASS] camera.mp4 is playable (0:12)
      [PASS] screen.mp4 is playable (0:12)
+     [PASS] mic.wav is playable (0:12)
+     [PASS] system.wav is playable (0:12)
      [PASS] final.mp4 is playable (0:12)
-   All 3 files are playable.
+   All 5 files are playable.
    ```
 
-5. Open the three files in QuickTime Player or VLC to see and hear them yourself. The tool proves that each file opens and its video decodes; run it again with `--audio` to also measure the sound levels (see [Acceptance test: final video quality](#acceptance-test-final-video-quality)), and listen for your voice (in `camera.mp4` and `final.mp4`) and the system audio (in `screen.mp4` and `final.mp4`).
+5. Open the files in QuickTime Player or VLC to see and hear them yourself. The tool proves that each file opens and decodes; run it again with `--audio` to also measure the sound levels (see [Acceptance test: final video quality](#acceptance-test-final-video-quality)), and listen for your voice (in `mic.wav` and the **Microphone** track of `final.mp4`) and the system audio (in `system.wav` and the **System audio** track of `final.mp4`). In VLC, switch tracks with Audio > Audio Track.
 
 ### What the check does
 
-For each of `camera.mp4`, `screen.mp4` and `final.mp4`, `recorder/verify.py` checks that the file exists, is not empty, opens in ffmpeg, has a video stream and that its first video frame decodes. It only reads the files and never changes them. A failed file gets a plain-words reason: missing, empty, cannot be opened and may be unplayable, no video stream, or the video could not be decoded.
+For each of `camera.mp4`, `screen.mp4`, `mic.wav`, `system.wav` and `final.mp4`, `recorder/verify.py` checks that the file exists, is not empty, opens in ffmpeg, has the stream it should (video in the MP4 files, audio in the WAV files) and that its first video frame (or the first second of audio) decodes. It only reads the files and never changes them. A failed file gets a plain-words reason: missing, empty, cannot be opened and may be unplayable, no video (or audio) stream, or the file could not be decoded.
 
 ### What Done guarantees
 
-- When you click **Stop**, `camera.mp4` and `screen.mp4` are checked before compositing starts (see [Reliable file output](#reliable-file-output)).
+- When you click **Stop**, the four raw files (`camera.mp4`, `screen.mp4`, `mic.wav` and `system.wav`) are checked before compositing starts (see [Reliable file output](#reliable-file-output)).
 - After compositing, `final.mp4` is checked as well.
-- The **Done** status is shown only when all of that succeeded, so **Done** always means three playable files in the timestamped folder. If anything fails, the **Error** status says which file and why, and the raw files are kept.
+- The **Done** status is shown only when all of that succeeded, so **Done** always means five playable files in the timestamped folder. If anything fails, the **Error** status says which file and why, and the raw files are kept.
 
 ### Unit tests
 
@@ -588,23 +607,23 @@ The naming of the session folders and the verification (with a fake ffmpeg, so t
 python3 -m unittest discover -s tests -v
 ```
 
-They check that each session gets a timestamped folder (with `-2`, `-3` ... if two start in the same minute), that the packaged app uses `~/Movies/Soul Screen Recorder` by default, and that missing, empty, index-less, audio-only and undecodable files are all reported as failures.
+They check that each session gets a timestamped folder (with `-2`, `-3` ... if two start in the same minute), that the packaged app uses `~/Movies/Soul Screen Recorder` by default, and that missing, empty, index-less, wrong-stream and undecodable files are all reported as failures. The four-file layout (the session paths, the video-only and WAV command builders, the launch offsets measured for the four captures, the two-track filter graph, the per-stream offsets in `sync.json` including an old two-file `sync.json`, and the `--mic-offset` and `--system-offset` flags) is covered by `tests/test_four_channel.py`.
 
 ### If the check fails
 
-- **`camera.mp4` or `screen.mp4` fails.** The capture did not finish cleanly. See [Reliable file output](#reliable-file-output) and [Error messages](#error-messages); the fragmented format usually keeps what was recorded.
+- **A raw file (`camera.mp4`, `screen.mp4`, `mic.wav` or `system.wav`) fails.** The capture did not finish cleanly. See [Reliable file output](#reliable-file-output) and [Error messages](#error-messages); the fragmented format usually keeps what was recorded.
 - **Only `final.mp4` fails.** Create it again with `python3 -m recorder.recomposite <session folder>` and run the check again.
 - **"ffmpeg was not found".** Install it with `brew install ffmpeg`.
 
 ## Acceptance test: final video quality
 
-The final video must show the presenter in the bottom-right corner, with the microphone and the system audio both clearly audible and in sync. Record a test session as in [Acceptance test: three playable files](#acceptance-test-three-playable-files), talking and playing some sound while you record, then:
+The final video must show the presenter in the bottom-right corner, with the microphone and the system audio both clearly audible, in sync and on two separate audio tracks. Record a test session as in [Acceptance test: five playable files](#acceptance-test-five-playable-files), talking and playing some sound while you record, then:
 
 ### Manual checklist
 
 1. Play `final.mp4` in QuickTime Player or VLC.
 2. **Layout.** The presenter sits in the bottom-right corner, about 320 px wide and 20 px from the edges of the video (or the size and corner chosen in [Settings](#settings)); the screen is the main video.
-3. **Audio.** Both your voice (the microphone) and whatever the Mac was playing (the system audio) are clearly audible in the final video.
+3. **Audio.** `final.mp4` has two audio tracks, **Microphone** (played by default) and **System audio**. Select each in turn (in VLC: Audio > Audio Track): your voice is clearly audible on the first and whatever the Mac was playing on the second.
 4. **Sync (clap test).** Clap your hands once in view of the camera at the very moment something visible and audible happens on screen (for example a click sound with a flash), near the start and again near the end for a long recording. In `final.mp4` the clap and the screen event happen together (see [Measuring an offset with a clap marker](#measuring-an-offset-with-a-clap-marker)).
 
 ### What the verify tool reports about audio levels
@@ -615,37 +634,41 @@ Run the verification tool with the `--audio` option:
 python3 -m recorder.verify recordings/2026-10-21_14-46 --audio
 ```
 
-Besides the playability lines, `--audio` measures the sound in each file with ffmpeg's volumedetect filter (mean and peak level) and prints one audio line per file:
+Besides the playability lines, `--audio` measures the sound in each file with ffmpeg's volumedetect filter (mean and peak level) and prints one audio line per measured file or track:
 
-- `final.mp4 audio (mic + system audio)` must have an audio track that is **not silent**: a missing or silent track is a `[FAIL]` line and fails the check, and a quiet track is a `[WARN]` that still passes.
-- `camera.mp4 audio (microphone)` and `screen.mp4 audio (system audio)` are reported as audible, quiet or silent. Silence there is only a `[WARN]`: nothing may have been playing, or nobody may have spoken, during the test.
+- `final.mp4 audio tracks` must report exactly **two separate audio tracks** (the microphone first, then the system audio); a missing track fails the check. Each track is then measured on its own, as `final.mp4 audio (microphone)` and `final.mp4 audio (system audio)`. A silent or quiet track is only a `[WARN]` (nothing may have been playing, or nobody may have spoken), but the check fails with `[FAIL] final.mp4 audio` if both tracks are silent.
+- `mic.wav audio (microphone)` and `system.wav audio (system audio)` are reported as audible, quiet or silent. Silence there is only a `[WARN]`. `camera.mp4` and `screen.mp4` are video only, so they have no sound to measure.
 
 For example:
 
 ```
 Session: recordings/2026-10-21_14-46
   [PASS] camera.mp4 is playable (0:12)
-  [WARN] camera.mp4 audio (microphone) is quiet (mean -35.4 dB, peak -22.0 dB); raise the volume of the source
   [PASS] screen.mp4 is playable (0:12)
-  [PASS] screen.mp4 audio (system audio) is audible (mean -18.1 dB, peak -3.2 dB)
+  [PASS] mic.wav is playable (0:12)
+  [PASS] system.wav is playable (0:12)
   [PASS] final.mp4 is playable (0:12)
-  [PASS] final.mp4 audio (mic + system audio) is audible (mean -16.9 dB, peak -2.8 dB)
-All 3 files are playable.
-The final video's audio is audible.
+  [WARN] mic.wav audio (microphone) is quiet (mean -35.4 dB, peak -22.0 dB); raise the volume of the source
+  [PASS] system.wav audio (system audio) is audible (mean -18.1 dB, peak -3.2 dB)
+  [PASS] final.mp4 audio tracks has 2 separate audio tracks (microphone and system audio)
+  [WARN] final.mp4 audio (microphone) is quiet (mean -35.0 dB, peak -21.8 dB); raise the volume of the source
+  [PASS] final.mp4 audio (system audio) is audible (mean -18.0 dB, peak -3.1 dB)
+All 5 files are playable.
+The audio checks passed.
 Check the WARN lines above.
 ```
 
-The tool still exits with status 0 only when everything passed, so a silent `final.mp4` audio track fails it.
+The tool still exits with status 0 only when everything passed, so a `final.mp4` that does not have two audio tracks, or whose two tracks are both silent, fails it.
 
 ### Fixing quiet or out-of-sync audio
 
-- **The audio is quiet.** Move closer to the microphone or raise its input level, and play the system sound louder. Check that the Multi-Output Device includes BlackHole 2ch and is selected as the output (see [Set up system audio (Multi-Output Device)](#set-up-system-audio-multi-output-device)). A quiet track passes with a `WARN`; a silent `final.mp4` track fails, which usually means one of the sources was silent or the Multi-Output Device was not set up.
-- **Your voice and the system audio are not in step with each other.** When the final video is made, both audio inputs are resampled to one shared rate with timestamp correction before they are mixed, so they stay aligned over long recordings. If a constant gap remains, correct it with a camera offset: measure it with the clap method and re-create the final video with `python3 -m recorder.recomposite <session folder> --camera-offset <seconds>` (see [Applying the offset](#applying-the-offset)).
+- **The audio is quiet.** Move closer to the microphone or raise its input level, and play the system sound louder. Check that the Multi-Output Device includes BlackHole 2ch and is selected as the output (see [Set up system audio (Multi-Output Device)](#set-up-system-audio-multi-output-device)). A quiet track passes with a `WARN`; if both tracks of `final.mp4` are silent the check fails, which usually means the sources were silent or the Multi-Output Device was not set up.
+- **Your voice and the system audio are not in step with each other.** When the final video is made, both audio files are resampled to one shared rate with timestamp correction, so they stay aligned over long recordings. If a constant gap remains, correct it with a per-stream offset: measure it with the clap method and re-create the final video with `python3 -m recorder.recomposite <session folder> --mic-offset <seconds>` and/or `--system-offset <seconds>` (and `--camera-offset <seconds>` for the presenter's video); see [Applying the offset](#applying-the-offset).
 - **The gap grows over the recording (drift).** One offset value cannot correct drift. Tick **Drift Correction** for BlackHole 2ch in the Multi-Output Device (see [System audio troubleshooting](#system-audio-troubleshooting)) and record again.
 
 ### Unit tests
 
-The final video's layout and audio are covered by `tests/test_final_quality.py`, which uses only the Python standard library (no real ffmpeg needed). They check that the presenter overlay lands in the bottom-right corner with its margin by default and in each of the four corners when chosen, that the microphone and system audio are both mixed with `amix` after being resampled to one rate, that a camera offset shifts the presenter's video and microphone in the filter graph, and that the audio levels parsed from volumedetect are classified as audible, quiet or silent.
+The final video's layout and audio are covered by `tests/test_final_quality.py`, which uses only the Python standard library (no real ffmpeg needed). They check that the presenter overlay lands in the bottom-right corner with its margin by default and in each of the four corners when chosen, that the microphone and system audio are each resampled to one rate and kept as two separate tracks with no `amix`, that the camera, microphone and system offsets each shift only their own stream in the filter graph, and that the audio levels parsed from volumedetect are classified as audible, quiet or silent.
 
 They run with the same command as the other tests:
 
@@ -660,17 +683,17 @@ A 30-minute recording must complete without crashes, dropped audio or a frozen w
 ### What keeps a long recording safe
 
 - **The Mac stays awake.** While recording, the app runs macOS's `caffeinate` (see `KeepAwake` in `recorder/stability.py`) so neither the display nor the system goes to sleep. A sleeping Mac stops both captures and leaves a gap in the audio. `caffeinate` is tied to the app's process, so it ends by itself even if the app crashes, and it is stopped again on Stop, on closing the window and on errors.
-- **A monitor watches both captures.** Every 5 seconds a background thread (`CaptureMonitor`) checks that both ffmpeg processes are still running, that `camera.mp4` and `screen.mp4` are still growing (a file that does not grow for 30 seconds means a stuck capture) and that the disk is not filling up. Each problem is reported once. A fatal problem stops both captures cleanly, so the raw files are finalized and kept, and the **Error** status explains what happened. Running low on disk space (under 2 GB free) is only a warning shown under the clock; the recording stops by itself, with everything so far kept, when less than 300 MB is left.
+- **A monitor watches all four captures.** Every 5 seconds a background thread (`CaptureMonitor`) checks that all four ffmpeg processes (camera, screen, microphone and system audio) are still running, that the four raw files are still growing (a file that does not grow for 30 seconds means a stuck capture) and that the disk is not filling up. Each problem is reported once. A fatal problem stops both captures cleanly, so the raw files are finalized and kept, and the **Error** status explains what happened. Running low on disk space (under 2 GB free) is only a warning shown under the clock; the recording stops by itself, with everything so far kept, when less than 300 MB is left.
 - **Disk space is checked first.** Before anything starts, the app checks that the folder you save to has room for a 30-minute recording at the chosen quality (including `final.mp4` and a 10% safety margin). If not, recording does not start and the message says how many minutes would fit. Use this table to plan:
 
-  | Quality | Space for a 30-minute recording (all three files) |
+  | Quality | Space for a 30-minute recording (all five files) |
   |---------|----------------------------------------------------|
-  | Low | about 2.0 GB |
-  | Medium | about 4.7 GB |
-  | High | about 9.3 GB |
+  | Low | about 2.6 GB |
+  | Medium | about 5.4 GB |
+  | High | about 10.0 GB |
 
 - **Quiet ffmpeg logging.** Every ffmpeg process runs with `-nostats` and the `warning` log level, so its temporary log file stays tiny however long the recording is, and the log of the final composite goes to a temporary file instead of a pipe that could fill up. Compositing has no time limit, so a long recording on a slower Mac is always allowed to finish.
-- **Audio is not dropped.** Both captures use a larger input thread queue (`-thread_queue_size 1024`) and wall-clock timestamps, so audio is kept in step even when the Mac is busy.
+- **Audio is not dropped.** All four captures use a larger input thread queue (`-thread_queue_size 1024`) and wall-clock timestamps, so audio is kept in step even when the Mac is busy.
 - **The window stays responsive.** An elapsed-time clock under the status (for example `12:34`) is refreshed once a second with Tk's `after()`, with no extra thread. Errors from the monitor reach the window through the same state updates as every other error, so they are handled on the Tk thread.
 
 ### Manual checklist
@@ -697,7 +720,7 @@ python3 -m recorder.soak --minutes 30
 For a quick trial of the setup, use a short run such as `--minutes 2`. While it records it measures, every 5 seconds (`--interval` changes this):
 
 - the CPU use and memory of the ffmpeg processes,
-- the size of `camera.mp4` and `screen.mp4`, which must keep growing,
+- the size of `camera.mp4`, `screen.mp4`, `mic.wav` and `system.wav`, which must keep growing,
 - whether the app's threads stay responsive: a heartbeat thread must wake up on time, controller calls must stay fast and the capture monitor thread must stay alive.
 
 Afterwards it runs the verify checks, with audio levels, audio-versus-video lengths and a minimum length, and prints a report. For example:
@@ -707,13 +730,13 @@ Soak test: 30 minute recording
 Session: recordings/2026-10-21_14-46
   [PASS] Recording started: Record reached the Recording state
   [PASS] Ran without errors: recorded 30:00 with no error
-  [PASS] Finished with three files: Saved to recordings/2026-10-21_14-46
+  [PASS] Finished with all files: Saved to recordings/2026-10-21_14-46
   [PASS] Low CPU: ffmpeg average 24%, peak 41% (limit 150% average)
   [PASS] Stable memory: peak 310 MB, growth +12 MB from start to end (limits 1500 MB and 300 MB)
-  [PASS] Both captures kept running: at least 2 ffmpeg process(es) in every sample (expected 2)
-  [PASS] Files kept growing: camera.mp4 longest quiet 5s, screen.mp4 longest quiet 5s (limit 30s)
+  [PASS] All four captures kept running: at least 4 ffmpeg process(es) in every sample (expected 4)
+  [PASS] Files kept growing: camera.mp4 longest quiet 5s, screen.mp4 longest quiet 5s, mic.wav longest quiet 5s, system.wav longest quiet 5s (limit 30s)
   [PASS] App stayed responsive: heartbeat at most 0.01s late, slowest controller call 0 ms, monitor thread missing in 0 of 360 samples (limit 2.0s)
-  [PASS] Files verified: all checks passed (playable, audio audible, lengths match)
+  [PASS] Files verified: all checks passed (playable, audio audible, lengths match, two audio tracks in final.mp4)
 
 PASSED: all 9 checks passed.
 ```
@@ -722,18 +745,19 @@ The command exits with status 0 only when every check passed, 1 when a check fai
 
 ### Reading the audio-drop checks
 
-Dropped audio makes a file's audio shorter than its video. `recorder.verify` can compare the two lengths for every file:
+Dropped audio makes the sound shorter than the video. `recorder.verify` compares the length of `final.mp4`'s audio with its video, and the length of `mic.wav` and `system.wav` with the screen recording:
 
 ```bash
 python3 -m recorder.verify recordings/2026-10-21_14-46 --lengths
 python3 -m recorder.verify recordings/2026-10-21_14-46 --min-minutes 30
 ```
 
-`--lengths` adds one `length` line per file. The audio being 2 seconds or more shorter than the video is a `[WARN]` (some audio may have been dropped); clearly shorter (more than 5 seconds and more than 2% of the video) is a `[FAIL]`. `--min-minutes` implies `--lengths` and also fails any file shorter than the given length (10 seconds of tolerance is allowed in the soak test for start-up and stop). For example:
+`--lengths` adds one `length` line for each file with sound or video. The audio being 2 seconds or more shorter than the video (or, for `mic.wav` and `system.wav`, than the screen recording) is a `[WARN]` (some audio may have been dropped); clearly shorter (more than 5 seconds and more than 2% of the video) is a `[FAIL]`. `--min-minutes` implies `--lengths` and also fails any file shorter than the given length (10 seconds of tolerance is allowed in the soak test for start-up and stop). For example:
 
 ```
-  [PASS] screen.mp4 length is 30:01 long, and the audio and video lengths match
-  [WARN] camera.mp4 length is 30:00 long, but its audio is 29:56, so some audio may have been dropped
+  [PASS] screen.mp4 length is 30:01 long
+  [PASS] mic.wav length is 30:01 long, and it matches the screen recording length
+  [WARN] system.wav length is 29:56 long, but the screen recording is 30:01, so some audio may have been dropped
   [FAIL] final.mp4 length is 12:10 long, which is shorter than the required 30:00
 ```
 
@@ -784,21 +808,22 @@ recorder/
   compat.py              The supported platform (macOS 13+, Apple Silicon and Intel, Tk 8.6+) and the check of this Mac; also python3 -m recorder.compat
   permissions.py         Detects missing Camera, Microphone and Screen Recording access (ctypes, no extra packages), builds the fix instructions and opens the matching privacy pane
   errors.py              Friendly error messages (ffmpeg missing, BlackHole missing, device not found, low or full disk) and the translation of raw ffmpeg log text and system errors into them
-  capture.py             Starts and stops the two ffmpeg captures; writes fragmented MP4s and verifies them after stop
-  session.py             Creates the timestamped session folder (default folder: recordings/, or ~/Movies/Soul Screen Recorder in the packaged app)
-  verify.py              Checks that a session holds three playable files (camera, screen, final); also python3 -m recorder.verify <session folder>
-  sync.py                Reads and writes a session's sync.json (launch gap and camera offset)
-  compositor.py          Builds final.mp4: PiP overlay and mixed audio via ffmpeg, with an optional camera offset
-  recomposite.py         Command-line tool to re-composite an existing session folder (optional --camera-offset)
+  capture.py             Starts and stops the four ffmpeg captures (camera, screen, microphone, system audio); writes fragmented MP4s and WAV files and verifies them after stop
+  session.py             Creates the timestamped session folder with the paths of its four raw files, final.mp4 and sync.json (default folder: recordings/, or ~/Movies/Soul Screen Recorder in the packaged app)
+  verify.py              Checks that a session holds five playable files (camera, screen, mic, system, final) and that final.mp4 has two audio tracks; also python3 -m recorder.verify <session folder>
+  sync.py                Reads and writes a session's sync.json (launch times and the camera, microphone and system-audio offsets)
+  compositor.py          Builds final.mp4: PiP overlay and two separate audio tracks (Microphone, System audio) via ffmpeg, with optional camera, microphone and system-audio offsets
+  recomposite.py         Command-line tool to re-composite an existing session folder (optional --camera-offset, --mic-offset and --system-offset)
   stability.py           Long-recording safeguards: keep-awake (caffeinate), disk-space estimate and the capture monitor (early exit, stalled file, low disk)
   soak.py                Soak test: python3 -m recorder.soak --minutes 30 records unattended, measures CPU, memory, file growth and responsiveness, then verifies the files
 ui/
   main_window.py         Tkinter window: status indicator, Record/Stop button, Permissions note with Open Privacy Settings button, Devices dropdowns, safe close handling that keeps the window responsive
 tests/
   test_verify.py         Unit tests (standard library unittest) for the session folders and the playable-file check, using a fake ffmpeg
-  test_final_quality.py  Unit tests (standard library unittest) for the final video's overlay layout, audio mix/resampling and the audio level checks
+  test_final_quality.py  Unit tests (standard library unittest) for the final video's overlay layout, the two separate audio tracks, resampling and the audio level checks
   test_compat.py         Unit tests (standard library unittest) for the macOS version minimum, Apple Silicon/Intel/Rosetta detection, the Tk check and the never-raises behaviour
   test_stability.py      Unit tests (standard library unittest) for the disk-space estimate, the capture monitor and the keep-awake helper, using fake processes and a fake clock
+  test_four_channel.py   Unit tests (standard library unittest) for the four-file session layout, the audio command builders, the launch offsets, the two-track filter graph, the per-stream sync offsets and the recomposite offset flags
 docs/
   screencapturekit-evaluation.md   Evaluation of ScreenCaptureKit as a driver-free alternative to BlackHole
 requirements.txt         Dependencies (none required yet)
@@ -811,10 +836,10 @@ requirements-build.txt   Build-only dependency for the packaged app (py2app)
 - Starting, stopping and processing each run in a background thread, so the window never freezes while devices are detected, ffmpeg launches, or ffmpeg flushes and combines the files.
 - `RecorderController.shutdown()` is called when the window is closed. It stops any running capture cleanly and waits for the files to be finalized before the app exits. It does not create `final.mp4`. The window runs it in a background thread and keeps updating while it waits, then closes. If it is called while the captures are still starting, the start-up thread stops them as soon as they are up.
 - The controller notifies the window of every state change, and the window updates the indicator and button accordingly.
-- On Record, the controller enters the Starting state and a background thread runs `_start_capture`, which first checks the sound output (see Sound output check), then detects the devices (using your saved choices where those devices are connected, see Choosing devices), creates the session folder and launches the camera and screen ffmpeg processes back to back (see How capture works). The state then changes to Recording. On Stop, `_stop_capture` asks both to finish so the MP4 files are finalized cleanly, and then checks that each file can be opened before processing continues.
+- On Record, the controller enters the Starting state and a background thread runs `_start_capture`, which first checks the sound output (see Sound output check), then detects the devices (using your saved choices where those devices are connected, see Choosing devices), creates the session folder and launches the camera, screen, microphone and system-audio ffmpeg processes back to back (see How capture works). The state then changes to Recording. On Stop, `_stop_capture` asks all four to finish so the MP4 files are finalized cleanly, and then checks that each file can be opened before processing continues.
 - Before anything else, `_start_capture` checks the Camera, Microphone and Screen Recording permissions through `recorder/permissions.py` and fails with the exact fix steps if one is turned off. The window runs the same check in a background thread at startup, when it regains focus and after each recording, and shows the **Permissions** note with an **Open Privacy Settings** button while something is missing (see Permission check).
 - Any device, session, capture or compositing failure (and any unexpected exception) goes through `recorder/errors.py` before it is shown as the **Error** status: known problems such as a missing device, a busy device or a full disk are recognised in ffmpeg's log and explained with a fix, and the window shows the first sentence as a heading with the fix steps below it (see Error messages).
 - Both the captures and the final composite get their video encoder arguments from `recorder/encoding.py`, which prefers hardware encoding and falls back to `libx264` (see Low CPU use).
-- After Stop, `_process` runs in the background thread and calls `compositor.composite()`, which runs ffmpeg with an overlay filter (presenter scaled to the width chosen in Settings, about 320 px by default, 20 px from the chosen corner, bottom right by default) and mixes the microphone from `camera.mp4` with the system audio from `screen.mp4`. The raw files are never modified.
-- The two captures are launched back to back and the measured launch gap is saved to `sync.json` after a clean stop. When compositing, the controller passes the session's saved `camera_offset_seconds` to the compositor, which shifts the presenter's video and microphone before the overlay and mix (see Audio/video sync).
+- After Stop, `_process` runs in the background thread and calls `compositor.composite()`, which runs ffmpeg with an overlay filter (presenter scaled to the width chosen in Settings, about 320 px by default, 20 px from the chosen corner, bottom right by default) and writes the microphone (`mic.wav`) and the system audio (`system.wav`) as two separate AAC tracks, without mixing them. The raw files are never modified.
+- The four captures are launched back to back and the measured launch times are saved to `sync.json` after a clean stop. When compositing, the controller passes the session's saved camera, microphone and system-audio offsets to the compositor, which shifts each of those streams against the screen before the overlay is applied and the two audio tracks are written (see Audio/video sync).
 - Before the window opens, `main.py` asks the controller for the platform check from `recorder/compat.py` and shows a warning dialog if macOS is older than 13 or Tk is older than 8.6. `_start_capture` checks the macOS version again before anything else, so an unsupported macOS never starts a recording. A version that cannot be determined never blocks (see Compatibility).

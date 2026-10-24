@@ -26,7 +26,7 @@ If `brew` isn't installed yet, open **Terminal** and run the install command fro
 Run each of these in the project folder:
 
 ```bash
-# 1. FFmpeg — handles video encoding
+# 1. FFmpeg — records the four streams, encodes the video and builds final.mp4
 brew install ffmpeg
 
 # 2. BlackHole 2ch — routes system audio so the recorder can capture it
@@ -102,6 +102,41 @@ The first run creates a Python virtual environment (`venv/`) and installs everyt
 - [ ] Multi-Output Device is your active sound output
 - [ ] Volume is set where you want it (volume keys won't work while recording)
 - [ ] `./run.sh` launches without warnings
+- [ ] There is plenty of free disk space for the recording (see below)
+- [ ] After a short test recording (about 10 seconds), the session folder holds five files and `python3 -m recorder.verify <session folder> --audio` passes
+
+### What a recording contains
+
+Each recording gets its own timestamped folder (by default inside `recordings/`, or `~/Movies/Soul Screen Recorder` in the packaged app) with four raw files, the finished video and a sync file:
+
+```
+camera.mp4    presenter camera, video only
+screen.mp4    screen, video only
+mic.wav       microphone, audio only
+system.wav    system audio (BlackHole), audio only
+final.mp4     screen + presenter overlay, with two audio tracks
+sync.json     measured start times and the alignment offsets
+```
+
+`final.mp4` has **two separate audio tracks**: **Microphone** (track 1, played by default) and **System audio** (track 2). They are not mixed, so you can switch between them or level them separately. Most players play one track at a time: in VLC choose **Audio → Audio Track** to switch, or use an editor that plays all tracks. The four raw files are never changed or deleted by the app.
+
+**Disk space.** The two WAV files are uncompressed (about 23 MB per minute together), so recordings need more room than before. Allow roughly 2.6 GB (Low), 5.4 GB (Medium) or 10 GB (High) for a 30-minute recording including `final.mp4`. The app checks the free space before it starts and tells you how many minutes fit.
+
+**Checking a test recording.** Replace the folder name with the one shown after **Done**:
+
+```bash
+python3 -m recorder.verify recordings/2026-10-21_14-46 --audio --lengths
+```
+
+It reports on all five files and checks that `final.mp4` has two audio tracks.
+
+**Fixing sync afterwards.** The four captures start a fraction of a second apart. To measure a gap, clap once in view of the camera at the moment something visible and audible happens on screen, then compare the times in `camera.mp4`, `mic.wav`, `screen.mp4` and `system.wav` (offset = screen time − stream time). Re-create `final.mp4` with the offsets, each in seconds (positive delays a stream, negative makes it earlier; give only the ones you need):
+
+```bash
+python3 -m recorder.recomposite recordings/2026-10-21_14-46 --camera-offset -0.35 --mic-offset -0.12 --system-offset 0.05
+```
+
+The offsets are saved to `sync.json` and reused on later runs. Only sessions that have all four raw files can be re-composited.
 
 ---
 
@@ -117,6 +152,10 @@ The first run creates a Python virtual environment (`venv/`) and installs everyt
 | Terminal permission toggle won't stick | Quit Terminal fully (Command + Q), reopen, retry. If it still fails: `tccutil reset ScreenCapture com.apple.Terminal`, restart Terminal, run the app, click **Allow** |
 | Terminal is missing from a permissions list | Click **+**, press **Command + Shift + G**, go to `/System/Applications/Utilities/`, select **Terminal.app** |
 | Can't find a setting | Use the **search bar** in System Settings (e.g. type "Screen Recording") |
+| `final.mp4` plays only my voice, or only the system sound | It has two separate audio tracks and the player plays one at a time. Switch tracks in the player (VLC: **Audio → Audio Track**) |
+| My voice, the system sound or the presenter is slightly out of step | Measure the gap with a clap and re-create the video with `python3 -m recorder.recomposite <session folder> --camera-offset <s> --mic-offset <s> --system-offset <s>` |
+| Recording won't start and mentions low disk space | The four raw files plus `final.mp4` need more room than two files did. Free up space, choose another folder in Settings or pick a lower video quality |
+| Recording stops with an error naming the microphone or system audio | Check that the microphone and BlackHole 2ch are connected, and that the Multi-Output Device is still your sound output (§3.2). The raw files recorded so far are kept |
 
 ---
 

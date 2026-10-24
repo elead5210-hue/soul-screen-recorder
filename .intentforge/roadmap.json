@@ -174,13 +174,13 @@
       "feature_id": null,
       "title": "Update the tests",
       "summary": "Change the command-builder, filter-graph, verify and stability tests to the new layout, and add tests for the two-track filter graph and the per-stream offsets. Done when the full suite passes without a Mac.",
-      "detail": "{\"planState\":\"tasks_created\",\"planPromptText\":\"Goal: Update the tests\\nDescription: Change the command-builder, filter-graph, verify and stability tests to the new layout, and add tests for the two-track filter graph and the per-stream offsets. Done when the full suite passes without a Mac.\\n\\nBelow is the current file tree for this project: one path per line,\\nfollowed by a short content fingerprint (format:\\nL<byte length>:H<8-char hash> - see shared/fingerprint.js if you’ve\\nseen this project before). No file contents are included here.\\n\\nPlan the set of file changes needed to implement the goal above.\\nRespond with ONLY this JSON object, no other text before or after it:\\n{\\n  \\\"tasks\\\": [\\n    {\\n      \\\"path\\\": \\\"components/example/example.js\\\",\\n      \\\"action\\\": \\\"create\\\" | \\\"modify\\\" | \\\"delete\\\",\\n      \\\"description\\\": \\\"one-line description of the change\\\",\\n      \\\"needsFileContent\\\": true,\\n      \\\"needsMetadata\\\": false,\\n      \\\"confident\\\": true\\n    }\\n  ]\\n}\\n\\n- needsFileContent: true unless this task is a plain delete with\\n  nothing else to write.\\n- needsMetadata: true only if this task needs you to author extra\\n  structured data beyond the file’s content (leave false if unsure).\\n- confident: for \\\"modify\\\"/\\\"delete\\\" tasks, whether your memory of\\n  that file’s current content matches the fingerprint shown above.\\n  Always true for \\\"create\\\" tasks (there’s nothing to remember yet).\\n\\nCurrent file tree:\\n.gitignore  L196:H44418f29\\nbuild_app.sh  L7257:H05445ae8\\ndocs/screencapturekit-evaluation.md  L5592:H7bac335c\\ndocs/SETUP.md  L5966:H3a081cb9\\ninit.md  L10:H5b173971\\nmain.py  L2053:Hcec77e73\\nREADME.md  L73778:Ha0cc40e5\\nrecorder/__init__.py  L71:Hf8924643\\nrecorder/app_settings.py  L5928:H2edda493\\nrecorder/audio_output.py  L4060:H4939c609\\nrecorder/capture.py  L17306:H48d381c6\\nrecorder/compat.py  L15781:H6d4ec5db\\nrecorder/compositor.py  L12191:H6c1d3f25\\nrecorder/controller.py  L26259:H4d4beed6\\nrecorder/device_settings.py  L3555:H064f253d\\nrecorder/devices.py  L8921:Ha91e2049\\nrecorder/encoding.py  L4247:H2e39e21f\\nrecorder/errors.py  L8437:Hc926e78d\\nrecorder/permissions.py  L10636:H7ad0c00f\\nrecorder/recomposite.py  L8214:H5db7755e\\nrecorder/session.py  L4572:Hf932f725\\nrecorder/soak.py  L20368:Ha226cf19\\nrecorder/stability.py  L20700:H2dd80eea\\nrecorder/state.py  L1752:H23fa7e94\\nrecorder/sync.py  L8539:Hdbe24730\\nrecorder/verify.py  L26059:H687a2ff6\\nrequirements-build.txt  L379:H4c11fc59\\nrequirements.txt  L1018:Hec5de03c\\nrun.sh  L6723:H34ca27a9\\nsetup.py  L2734:H825deb9f\\ntests/test_compat.py  L21473:Hbf62999f\\ntests/test_final_quality.py  L10670:Hedf9f5f0\\ntests/test_stability.py  L18843:H216b1ed8\\ntests/test_verify.py  L11530:H82a62732\\nui/__init__.py  L91:He423e5c3\\nui/main_window.py  L28438:H32a811d1\"}",
+      "detail": "{\"planState\":\"tasks_created\",\"planPromptText\":\"Goal: Update the tests\\nDescription: Change the command-builder, filter-graph, verify and stability tests to the new layout, and add tests for the two-track filter graph and the per-stream offsets. Done when the full suite passes without a Mac.\\n\\nBelow is the current file tree for this project: one path per line,\\nfollowed by a short content fingerprint (format:\\nL<byte length>:H<8-char hash> - see shared/fingerprint.js if you’ve\\nseen this project before). No file contents are included here.\\n\\nPlan the set of file changes needed to implement the goal above.\\nRespond with ONLY this JSON object, no other text before or after it:\\n{\\n  \\\"tasks\\\": [\\n    {\\n      \\\"path\\\": \\\"components/example/example.js\\\",\\n      \\\"action\\\": \\\"create\\\" | \\\"modify\\\" | \\\"delete\\\",\\n      \\\"description\\\": \\\"one-line description of the change\\\",\\n      \\\"needsFileContent\\\": true,\\n      \\\"needsMetadata\\\": false,\\n      \\\"confident\\\": true\\n    }\\n  ]\\n}\\n\\n- needsFileContent: true unless this task is a plain delete with\\n  nothing else to write.\\n- needsMetadata: true only if this task needs you to author extra\\n  structured data beyond the file’s content (leave false if unsure).\\n- confident: for \\\"modify\\\"/\\\"delete\\\" tasks, whether your memory of\\n  that file’s current content matches the fingerprint shown above.\\n  Always true for \\\"create\\\" tasks (there’s nothing to remember yet).\\n\\nCurrent file tree:\\n.gitignore  L196:H44418f29\\nbuild_app.sh  L7257:H05445ae8\\ndocs/screencapturekit-evaluation.md  L5592:H7bac335c\\ndocs/SETUP.md  L5966:H3a081cb9\\ninit.md  L10:H5b173971\\nmain.py  L2053:Hcec77e73\\nREADME.md  L73778:Ha0cc40e5\\nrecorder/__init__.py  L71:Hf8924643\\nrecorder/app_settings.py  L5928:H2edda493\\nrecorder/audio_output.py  L4060:H4939c609\\nrecorder/capture.py  L17306:H48d381c6\\nrecorder/compat.py  L15781:H6d4ec5db\\nrecorder/compositor.py  L12191:H6c1d3f25\\nrecorder/controller.py  L26259:H4d4beed6\\nrecorder/device_settings.py  L3555:H064f253d\\nrecorder/devices.py  L8921:Ha91e2049\\nrecorder/encoding.py  L4247:H2e39e21f\\nrecorder/errors.py  L8437:Hc926e78d\\nrecorder/permissions.py  L10636:H7ad0c00f\\nrecorder/recomposite.py  L8214:H5db7755e\\nrecorder/session.py  L4572:Hf932f725\\nrecorder/soak.py  L20368:Ha226cf19\\nrecorder/stability.py  L20700:H2dd80eea\\nrecorder/state.py  L1752:H23fa7e94\\nrecorder/sync.py  L8539:Hdbe24730\\nrecorder/verify.py  L26059:H687a2ff6\\nrequirements-build.txt  L379:H4c11fc59\\nrequirements.txt  L1018:Hec5de03c\\nrun.sh  L6723:H34ca27a9\\nsetup.py  L2734:H825deb9f\\ntests/test_compat.py  L21473:Hbf62999f\\ntests/test_final_quality.py  L10670:Hedf9f5f0\\ntests/test_stability.py  L18843:H216b1ed8\\ntests/test_verify.py  L11530:H82a62732\\nui/__init__.py  L91:He423e5c3\\nui/main_window.py  L28438:H32a811d1\",\"pushOutcome\":{\"status\":\"pushed\",\"sha\":\"d79cd6122781ac117e0aabdbfe3671dade9a27da\",\"at\":\"2026-10-24T07:00:58.610Z\"}}",
       "linked_element_ids": [],
       "finalized": false,
       "blocked_by": [],
       "notes": "",
       "createdAt": "2026-10-24T06:27:59.623Z",
-      "updatedAt": "2026-10-24T06:48:21.797Z"
+      "updatedAt": "2026-10-24T07:00:58.619Z"
     },
     {
       "roadmap_node_id": "rmn_7053f905d1b60466de145c7e",
@@ -194,13 +194,13 @@
       "feature_id": null,
       "title": "Update the docs",
       "summary": "Update README.md and docs/SETUP.md to describe the new session layout, the two audio tracks, and the new recomposite flags.",
-      "detail": "",
+      "detail": "{\"planState\":\"tasks_created\",\"planPromptText\":\"Goal: Update the docs\\nDescription: Update README.md and docs/SETUP.md to describe the new session layout, the two audio tracks, and the new recomposite flags.\\n\\nBelow is the current file tree for this project: one path per line,\\nfollowed by a short content fingerprint (format:\\nL<byte length>:H<8-char hash> - see shared/fingerprint.js if you’ve\\nseen this project before). No file contents are included here.\\n\\nPlan the set of file changes needed to implement the goal above.\\nRespond with ONLY this JSON object, no other text before or after it:\\n{\\n  \\\"tasks\\\": [\\n    {\\n      \\\"path\\\": \\\"components/example/example.js\\\",\\n      \\\"action\\\": \\\"create\\\" | \\\"modify\\\" | \\\"delete\\\",\\n      \\\"description\\\": \\\"one-line description of the change\\\",\\n      \\\"needsFileContent\\\": true,\\n      \\\"needsMetadata\\\": false,\\n      \\\"confident\\\": true\\n    }\\n  ]\\n}\\n\\n- needsFileContent: true unless this task is a plain delete with\\n  nothing else to write.\\n- needsMetadata: true only if this task needs you to author extra\\n  structured data beyond the file’s content (leave false if unsure).\\n- confident: for \\\"modify\\\"/\\\"delete\\\" tasks, whether your memory of\\n  that file’s current content matches the fingerprint shown above.\\n  Always true for \\\"create\\\" tasks (there’s nothing to remember yet).\\n\\nCurrent file tree:\\n.gitignore  L196:H44418f29\\nbuild_app.sh  L7257:H05445ae8\\ndocs/screencapturekit-evaluation.md  L5592:H7bac335c\\ndocs/SETUP.md  L5966:H3a081cb9\\ninit.md  L10:H5b173971\\nmain.py  L2053:Hcec77e73\\nREADME.md  L73778:Ha0cc40e5\\nrecorder/__init__.py  L71:Hf8924643\\nrecorder/app_settings.py  L5928:H2edda493\\nrecorder/audio_output.py  L4060:H4939c609\\nrecorder/capture.py  L17306:H48d381c6\\nrecorder/compat.py  L15781:H6d4ec5db\\nrecorder/compositor.py  L12191:H6c1d3f25\\nrecorder/controller.py  L26259:H4d4beed6\\nrecorder/device_settings.py  L3555:H064f253d\\nrecorder/devices.py  L8921:Ha91e2049\\nrecorder/encoding.py  L4247:H2e39e21f\\nrecorder/errors.py  L8437:Hc926e78d\\nrecorder/permissions.py  L10636:H7ad0c00f\\nrecorder/recomposite.py  L8214:H5db7755e\\nrecorder/session.py  L4572:Hf932f725\\nrecorder/soak.py  L20962:H396530f6\\nrecorder/stability.py  L20700:H2dd80eea\\nrecorder/state.py  L1752:H23fa7e94\\nrecorder/sync.py  L8539:Hdbe24730\\nrecorder/verify.py  L26059:H687a2ff6\\nrequirements-build.txt  L379:H4c11fc59\\nrequirements.txt  L1018:Hec5de03c\\nrun.sh  L6723:H34ca27a9\\nsetup.py  L2734:H825deb9f\\ntests/test_compat.py  L21473:Hbf62999f\\ntests/test_final_quality.py  L15605:H3fd088d8\\ntests/test_four_channel.py  L27224:H1846e25a\\ntests/test_stability.py  L23306:H1aa9baa6\\ntests/test_verify.py  L26854:H78aabf47\\nui/__init__.py  L91:He423e5c3\\nui/main_window.py  L28438:H32a811d1\"}",
       "linked_element_ids": [],
       "finalized": false,
       "blocked_by": [],
       "notes": "",
       "createdAt": "2026-10-24T06:27:59.623Z",
-      "updatedAt": "2026-10-24T06:27:59.623Z"
+      "updatedAt": "2026-10-24T07:01:33.321Z"
     },
     {
       "roadmap_node_id": "rmn_34a98862b0ecfaed6cd32528",
@@ -383,6 +383,26 @@
       "updatedAt": "2026-10-24T06:49:40.644Z"
     },
     {
+      "roadmap_node_id": "rmn_b2dd9a441efee710816e2165",
+      "project_id": "9b3183b2-bfd9-4cad-abef-05891f52b874",
+      "parent_roadmap_node_id": "rmn_7053f905d1b60466de145c7e",
+      "type": "task",
+      "depth": 2,
+      "locked": false,
+      "status": "done",
+      "order": 0,
+      "feature_id": null,
+      "title": "README.md",
+      "summary": "Describe the four-file session layout (camera.mp4, screen.mp4, mic.wav, system.wav plus final.mp4 and sync.json), the two separate audio tracks in final.mp4, the per-stream sync offsets, and the new --mic-offset and --system-offset recomposite flags",
+      "detail": "{\"fileChangeMode\":\"patch\",\"action\":\"modify\",\"description\":\"Describe the four-file session layout (camera.mp4, screen.mp4, mic.wav, system.wav plus final.mp4 and sync.json), the two separate audio tracks in final.mp4, the per-stream sync offsets, and the new --mic-offset and --system-offset recomposite flags\",\"needsFileContent\":true,\"needsMetadata\":false,\"confident\":false,\"fileStatus\":\"done\",\"metadataStatus\":\"not_needed\",\"metadata\":null}",
+      "linked_element_ids": [],
+      "finalized": false,
+      "blocked_by": [],
+      "notes": "",
+      "createdAt": "2026-10-24T07:01:33.160Z",
+      "updatedAt": "2026-10-24T07:05:46.421Z"
+    },
+    {
       "roadmap_node_id": "rmn_82c70c788db77afda74f4c2c",
       "project_id": "9b3183b2-bfd9-4cad-abef-05891f52b874",
       "parent_roadmap_node_id": "rmn_27273d7d7cbc0560b1bc9532",
@@ -441,6 +461,26 @@
       "notes": "",
       "createdAt": "2026-10-24T06:48:21.372Z",
       "updatedAt": "2026-10-24T06:50:56.752Z"
+    },
+    {
+      "roadmap_node_id": "rmn_f707b00edf1cd9d3fefdf1ba",
+      "project_id": "9b3183b2-bfd9-4cad-abef-05891f52b874",
+      "parent_roadmap_node_id": "rmn_7053f905d1b60466de145c7e",
+      "type": "task",
+      "depth": 2,
+      "locked": false,
+      "status": "done",
+      "order": 1,
+      "feature_id": null,
+      "title": "docs/SETUP.md",
+      "summary": "Update setup and first-recording steps for the four raw files, the two selectable audio tracks in final.mp4, the extra disk space for the WAV files, and the new recomposite offset flags",
+      "detail": "{\"fileChangeMode\":\"patch\",\"action\":\"modify\",\"description\":\"Update setup and first-recording steps for the four raw files, the two selectable audio tracks in final.mp4, the extra disk space for the WAV files, and the new recomposite offset flags\",\"needsFileContent\":true,\"needsMetadata\":false,\"confident\":false,\"fileStatus\":\"done\",\"metadataStatus\":\"not_needed\",\"metadata\":null}",
+      "linked_element_ids": [],
+      "finalized": false,
+      "blocked_by": [],
+      "notes": "",
+      "createdAt": "2026-10-24T07:01:33.242Z",
+      "updatedAt": "2026-10-24T07:06:12.577Z"
     },
     {
       "roadmap_node_id": "rmn_82724a350635244795e5b391",
