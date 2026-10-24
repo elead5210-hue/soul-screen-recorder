@@ -5,17 +5,23 @@ Usage:
     python3 -m recorder.recomposite recordings/2026-10-21_14-46 --pip-width 480 --margin 30
     python3 -m recorder.recomposite recordings/2026-10-21_14-46 --output final_large_pip.mp4
     python3 -m recorder.recomposite recordings/2026-10-21_14-46 --camera-offset 0.35
+    python3 -m recorder.recomposite recordings/2026-10-21_14-46 --mic-offset -0.12 --system-offset 0.05
     python3 -m recorder.recomposite recordings/2026-10-21_14-46 --pip-position top-left --quality high
 
 When --pip-width, --pip-position or --quality are omitted, the values saved in
 the app's Settings are used.
 
---camera-offset (seconds) fine-aligns the presenter against the screen:
-positive delays the presenter (camera video and microphone), negative makes
-the presenter earlier. It is saved to the session's sync.json once the new
-video is made; when it is omitted, the offset already saved there is used.
+--camera-offset, --mic-offset and --system-offset (seconds) fine-align each
+stream against the screen, which is the reference and is never shifted:
+positive delays that stream, negative makes it earlier. --camera-offset
+shifts the camera video, --mic-offset the microphone and --system-offset the
+system audio. Each given offset is saved to the session's sync.json once the
+new video is made; an offset that is omitted uses the value already saved
+there (0 if none).
 
-Only camera.mp4 and screen.mp4 are read; they are never modified. By
+The four raw files camera.mp4, screen.mp4, mic.wav and system.wav are read;
+they are never modified. The new video has the screen with the camera
+overlay and two separate audio tracks (microphone and system audio). By
 default the result replaces final.mp4 in the same folder. Use --output to
 write a different file instead and keep the existing final.mp4.
 """
@@ -35,18 +41,25 @@ from recorder.compositor import (
 from recorder.session import (
     CAMERA_FILENAME,
     FINAL_FILENAME,
+    MIC_FILENAME,
     SCREEN_FILENAME,
     SYNC_FILENAME,
+    SYSTEM_FILENAME,
 )
-from recorder.sync import SyncError, load_sync, set_camera_offset, validate_offset
+from recorder.sync import SyncError, load_sync, set_stream_offset, validate_offset
+
+# The raw recordings that are read and must never be overwritten.
+RAW_FILENAMES = (CAMERA_FILENAME, SCREEN_FILENAME, MIC_FILENAME, SYSTEM_FILENAME)
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python3 -m recorder.recomposite",
         description=(
-            "Re-create the picture-in-picture video from a session's raw "
-            f"{CAMERA_FILENAME} and {SCREEN_FILENAME}."
+            "Re-create the picture-in-picture video, with separate microphone "
+            "and system-audio tracks, from a session's raw "
+            f"{CAMERA_FILENAME}, {SCREEN_FILENAME}, {MIC_FILENAME} and "
+            f"{SYSTEM_FILENAME}."
         ),
     )
     parser.add_argument(
@@ -84,8 +97,30 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="SECONDS",
         help=(
-            "fine-align the presenter against the screen: positive delays "
-            "the presenter, negative makes it earlier. Saved to sync.json; "
+            "fine-align the camera video against the screen: positive delays "
+            "it, negative makes it earlier. Saved to sync.json; "
+            "when omitted, the offset saved there is used (default 0)"
+        ),
+    )
+    parser.add_argument(
+        "--mic-offset",
+        type=float,
+        default=None,
+        metavar="SECONDS",
+        help=(
+            "fine-align the microphone against the screen: positive delays "
+            "it, negative makes it earlier. Saved to sync.json; "
+            "when omitted, the offset saved there is used (default 0)"
+        ),
+    )
+    parser.add_argument(
+        "--system-offset",
+        type=float,
+        default=None,
+        metavar="SECONDS",
+        help=(
+            "fine-align the system audio against the screen: positive delays "
+            "it, negative makes it earlier. Saved to sync.json; "
             "when omitted, the offset saved there is used (default 0)"
         ),
     )
@@ -121,7 +156,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     # Keep the output inside the session folder and never overwrite a raw file.
     output_name = Path(args.output).name
-    if output_name in (CAMERA_FILENAME, SCREEN_FILENAME):
+    if output_name in RAW_FILENAMES:
         print(
             f"Error: refusing to overwrite a raw recording ({output_name}).",
             file=sys.stderr,
@@ -132,27 +167,44 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 1
 
     sync_path = folder / SYNC_FILENAME
-    if args.camera_offset is not None:
+    # Falls back to 0 if sync.json is missing or damaged. An offset that is
+    # left out keeps the value saved there.
+    saved = load_sync(sync_path)
+    given = {
+        "camera": args.camera_offset,
+        "mic": args.mic_offset,
+        "system": args.system_offset,
+    }
+    offsets = {
+        "camera": saved.camera_offset_seconds,
+        "mic": saved.mic_offset_seconds,
+        "system": saved.system_offset_seconds,
+    }
+    for stream, value in given.items():
+        if value is None:
+            continue
         try:
-            camera_offset = validate_offset(args.camera_offset)
+            offsets[stream] = validate_offset(value, stream)
         except SyncError as exc:
             print(f"Error: {exc}", file=sys.stderr)
             return 1
-    else:
-        # Falls back to 0 if sync.json is missing or damaged.
-        camera_offset = load_sync(sync_path).camera_offset_seconds
 
     print(f"Compositing {folder} ...")
-    if camera_offset:
-        print(f"Camera offset: {camera_offset:+g} s")
+    for stream in ("camera", "mic", "system"):
+        if offsets[stream]:
+            print(f"{stream.capitalize()} offset: {offsets[stream]:+g} s")
     try:
         result = composite(
             folder / SCREEN_FILENAME,
             folder / CAMERA_FILENAME,
+            folder / MIC_FILENAME,
+            folder / SYSTEM_FILENAME,
             folder / output_name,
             pip_width=pip_width,
             margin=args.margin,
-            camera_offset=camera_offset,
+            camera_offset=offsets["camera"],
+            mic_offset=offsets["mic"],
+            system_offset=offsets["system"],
             pip_position=pip_position,
             quality=quality,
         )
@@ -162,13 +214,16 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     print(f"Saved {result}")
 
-    # Remember an explicitly given offset only after it produced a video.
-    if args.camera_offset is not None:
+    # Remember explicitly given offsets only after they produced a video.
+    for stream, value in given.items():
+        if value is None:
+            continue
         try:
-            set_camera_offset(sync_path, camera_offset)
+            set_stream_offset(sync_path, stream, offsets[stream])
         except SyncError as exc:
             print(
-                f"Warning: the video was made, but the offset was not saved: {exc}",
+                f"Warning: the video was made, but the {stream} offset was "
+                f"not saved: {exc}",
                 file=sys.stderr,
             )
     return 0
