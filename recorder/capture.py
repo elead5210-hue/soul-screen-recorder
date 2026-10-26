@@ -281,25 +281,56 @@ class MultiCapture:
         system_path: Path,
         ffmpeg_path: Optional[str] = None,
         quality: str = DEFAULT_QUALITY,
+        record_camera: bool = True,
+        record_screen: bool = True,
+        record_mic: bool = True,
+        record_system: bool = True,
     ) -> None:
+        # Deselected streams are never opened or recorded.
+        self._enabled = tuple(
+            name
+            for name, wanted in (
+                ("camera", record_camera),
+                ("screen", record_screen),
+                ("mic", record_mic),
+                ("system", record_system),
+            )
+            if wanted
+        )
+        if not self._enabled:
+            raise CaptureError(
+                "All channels are deselected, so there is nothing to record. "
+                "Turn on at least one channel in the settings."
+            )
         ffmpeg = ffmpeg_path or find_ffmpeg()
         self._ffmpeg = ffmpeg
         self.camera_path = camera_path
         self.screen_path = screen_path
         self.mic_path = mic_path
         self.system_path = system_path
-        self._camera = _FfmpegProcess(
-            "camera", build_camera_command(ffmpeg, devices, camera_path, quality)
-        )
-        self._screen = _FfmpegProcess(
-            "screen", build_screen_command(ffmpeg, devices, screen_path, quality)
-        )
-        self._mic = _FfmpegProcess(
-            "mic", build_mic_command(ffmpeg, devices, mic_path)
-        )
-        self._system = _FfmpegProcess(
-            "system", build_system_audio_command(ffmpeg, devices, system_path)
-        )
+        self._camera: Optional[_FfmpegProcess] = None
+        self._screen: Optional[_FfmpegProcess] = None
+        self._mic: Optional[_FfmpegProcess] = None
+        self._system: Optional[_FfmpegProcess] = None
+        if "camera" in self._enabled:
+            self._camera = _FfmpegProcess(
+                "camera",
+                build_camera_command(ffmpeg, devices, camera_path, quality),
+            )
+        if "screen" in self._enabled:
+            self._screen = _FfmpegProcess(
+                "screen",
+                build_screen_command(ffmpeg, devices, screen_path, quality),
+            )
+        if "mic" in self._enabled:
+            self._mic = _FfmpegProcess(
+                "mic", build_mic_command(ffmpeg, devices, mic_path)
+            )
+        if "system" in self._enabled:
+            self._system = _FfmpegProcess(
+                "system",
+                build_system_audio_command(ffmpeg, devices, system_path),
+            )
         self._started = False
         self._launch_gap_seconds: Optional[float] = None
         self._launch_offsets: Dict[str, float] = {}
@@ -327,10 +358,19 @@ class MultiCapture:
 
     @property
     def _processes(self) -> List[_FfmpegProcess]:
-        return [self._camera, self._screen, self._mic, self._system]
+        return [
+            p
+            for p in (self._camera, self._screen, self._mic, self._system)
+            if p is not None
+        ]
+
+    @property
+    def enabled_streams(self) -> tuple:
+        """Names of the streams being captured (deselected ones are left out)."""
+        return self._enabled
 
     def start(self) -> None:
-        """Launch both captures back to back, then verify they are running."""
+        """Launch the selected captures back to back, then verify they are running."""
         if self._started:
             raise CaptureError("Capture is already running.")
 
@@ -340,18 +380,20 @@ class MultiCapture:
             # All commands are fully built already. Launch back to back,
             # nothing in between, to keep the start times close; each launch
             # is timestamped with time.monotonic() around Popen.
-            self._camera.start()
-            self._screen.start()
-            self._mic.start()
-            self._system.start()
+            for p in self._processes:
+                p.start()
         except (FileNotFoundError, OSError) as exc:
             self._abort()
             raise CaptureError(
                 f"Could not launch ffmpeg. {friendly_message(exc)}"
             )
 
-        cam_t = self._camera.launch_returned_at
-        scr_t = self._screen.launch_returned_at
+        cam_t = (
+            self._camera.launch_returned_at if self._camera is not None else None
+        )
+        scr_t = (
+            self._screen.launch_returned_at if self._screen is not None else None
+        )
         if cam_t is not None and scr_t is not None:
             self._launch_gap_seconds = scr_t - cam_t
 
@@ -386,12 +428,13 @@ class MultiCapture:
     @property
     def raw_paths(self) -> List[Path]:
         """The raw files being written: camera, screen, mic and system."""
-        return [
-            self.camera_path,
-            self.screen_path,
-            self.mic_path,
-            self.system_path,
-        ]
+        paths = {
+            "camera": self.camera_path,
+            "screen": self.screen_path,
+            "mic": self.mic_path,
+            "system": self.system_path,
+        }
+        return [paths[name] for name in self._enabled]
 
     def is_running(self) -> bool:
         """True while capture has been started and all four ffmpeg processes are alive."""
@@ -451,12 +494,16 @@ class MultiCapture:
         for p in self._processes:
             p.close_log()
 
-        for path, label, marker in (
-            (self.camera_path, "camera", "Video:"),
-            (self.screen_path, "screen", "Video:"),
-            (self.mic_path, "mic", "Audio:"),
-            (self.system_path, "system", "Audio:"),
-        ):
+        for path, label, marker in [
+            item
+            for item in (
+                (self.camera_path, "camera", "Video:"),
+                (self.screen_path, "screen", "Video:"),
+                (self.mic_path, "mic", "Audio:"),
+                (self.system_path, "system", "Audio:"),
+            )
+            if item[1] in self._enabled
+        ]:
             if not path.exists() or path.stat().st_size == 0:
                 problems.append(f"The {label} file was not written: {path.name}")
             elif not _is_playable(self._ffmpeg, path, marker):

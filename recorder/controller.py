@@ -448,7 +448,12 @@ class RecorderController:
         """
         self._ensure_supported_macos()
         self._ensure_permissions()
-        _check_audio_output()
+        # load_app_settings never raises: a missing or damaged file gives the
+        # defaults (every channel on, recordings/ folder, medium quality).
+        prefs = load_app_settings()
+        # System audio is only checked when it is going to be recorded.
+        if prefs.record_system_audio:
+            _check_audio_output()
         # load_settings never raises: a missing or damaged settings file
         # just means auto-detect. A chosen device that is not connected
         # also falls back to auto-detection.
@@ -458,9 +463,6 @@ class RecorderController:
             microphone_name=choices.microphone,
             screen_name=choices.screen,
         )
-        # load_app_settings never raises: a missing or damaged file gives the
-        # defaults (recordings/ folder, medium quality).
-        prefs = load_app_settings()
         # Make sure the planned recording length fits before anything starts.
         space = check_space(
             prefs.output_path(), DEFAULT_PLANNED_MINUTES, prefs.quality
@@ -475,6 +477,10 @@ class RecorderController:
             session.mic_path,
             session.system_path,
             quality=prefs.quality,
+            record_camera=prefs.record_camera,
+            record_screen=prefs.record_screen,
+            record_mic=prefs.record_mic,
+            record_system=prefs.record_system_audio,
         )
         capture.start()
         return session, capture
@@ -494,12 +500,16 @@ class RecorderController:
             pass
         try:
             watches = []
+            # Deselected streams are not captured, so they are not watched.
+            enabled = getattr(capture, "enabled_streams", None)
             for name, path in (
                 ("camera", capture.camera_path),
                 ("screen", capture.screen_path),
                 ("mic", capture.mic_path),
                 ("system", capture.system_path),
             ):
+                if enabled is not None and name not in enabled:
+                    continue
                 proc = getattr(capture, f"_{name}", None)
                 running = proc.is_running if proc is not None else capture.is_running
                 watches.append(
@@ -625,6 +635,10 @@ class RecorderController:
             pip_width=prefs.pip_width,
             pip_position=prefs.pip_position,
             quality=prefs.quality,
+            include_camera=prefs.record_camera,
+            include_screen=prefs.record_screen,
+            include_mic=prefs.record_mic,
+            include_system=prefs.record_system_audio,
         )
 
         # The raw files were verified when the capture stopped. Check the

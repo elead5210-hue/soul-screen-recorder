@@ -50,6 +50,12 @@ DEFAULT_QUALITY = QUALITY_MEDIUM
 # An empty output folder means "use the default recordings folder".
 DEFAULT_OUTPUT_FOLDER = ""
 
+# Channel selection: a deselected channel is ignored when a recording starts.
+DEFAULT_RECORD_SCREEN = True
+DEFAULT_RECORD_SYSTEM_AUDIO = True
+DEFAULT_RECORD_MIC = True
+DEFAULT_RECORD_CAMERA = True
+
 
 @dataclass(frozen=True)
 class AppSettings:
@@ -59,6 +65,10 @@ class AppSettings:
     pip_position: str = DEFAULT_PIP_POSITION
     output_folder: str = DEFAULT_OUTPUT_FOLDER
     quality: str = DEFAULT_QUALITY
+    record_screen: bool = DEFAULT_RECORD_SCREEN
+    record_system_audio: bool = DEFAULT_RECORD_SYSTEM_AUDIO
+    record_mic: bool = DEFAULT_RECORD_MIC
+    record_camera: bool = DEFAULT_RECORD_CAMERA
 
     def output_path(self) -> Optional[Path]:
         """The chosen output folder, or None to use the default one."""
@@ -110,6 +120,11 @@ def _clean_folder(value: Any) -> str:
     return folder
 
 
+def _clean_bool(value: Any, default: bool) -> bool:
+    """Return value if it is a real bool, else the default."""
+    return value if isinstance(value, bool) else default
+
+
 def clean_settings(settings: AppSettings) -> AppSettings:
     """Return a copy of settings with every field validated."""
     return AppSettings(
@@ -119,6 +134,12 @@ def clean_settings(settings: AppSettings) -> AppSettings:
         ),
         output_folder=_clean_folder(settings.output_folder),
         quality=_clean_choice(settings.quality, QUALITY_PRESETS, DEFAULT_QUALITY),
+        record_screen=_clean_bool(settings.record_screen, DEFAULT_RECORD_SCREEN),
+        record_system_audio=_clean_bool(
+            settings.record_system_audio, DEFAULT_RECORD_SYSTEM_AUDIO
+        ),
+        record_mic=_clean_bool(settings.record_mic, DEFAULT_RECORD_MIC),
+        record_camera=_clean_bool(settings.record_camera, DEFAULT_RECORD_CAMERA),
     )
 
 
@@ -140,6 +161,12 @@ def load_app_settings(path: Optional[Path] = None) -> AppSettings:
         ),
         output_folder=_clean_folder(data.get("output_folder")),
         quality=_clean_choice(data.get("quality"), QUALITY_PRESETS, DEFAULT_QUALITY),
+        record_screen=_clean_bool(data.get("record_screen"), DEFAULT_RECORD_SCREEN),
+        record_system_audio=_clean_bool(
+            data.get("record_system_audio"), DEFAULT_RECORD_SYSTEM_AUDIO
+        ),
+        record_mic=_clean_bool(data.get("record_mic"), DEFAULT_RECORD_MIC),
+        record_camera=_clean_bool(data.get("record_camera"), DEFAULT_RECORD_CAMERA),
     )
 
 
@@ -152,6 +179,10 @@ def save_app_settings(settings: AppSettings, path: Optional[Path] = None) -> Non
         "pip_position": cleaned.pip_position,
         "output_folder": cleaned.output_folder,
         "quality": cleaned.quality,
+        "record_screen": cleaned.record_screen,
+        "record_system_audio": cleaned.record_system_audio,
+        "record_mic": cleaned.record_mic,
+        "record_camera": cleaned.record_camera,
     }
 
     temp = target.with_name(target.name + ".part")

@@ -37,6 +37,13 @@ _QUALITIES = (
     ("High (larger files)", "high"),
 )
 _DEFAULT_FOLDER_TEXT = "Default (recordings folder)"
+# Channels that can be deselected: (AppSettings field, label).
+_CHANNELS = (
+    ("record_camera", "Camera"),
+    ("record_screen", "Screen"),
+    ("record_mic", "Microphone"),
+    ("record_system_audio", "System audio"),
+)
 
 
 class MainWindow:
@@ -451,7 +458,29 @@ class MainWindow:
             justify="left",
             anchor="w",
         )
-        self._settings_note.grid(row=5, column=0, columnspan=2, sticky="w", pady=(4, 0))
+        self._settings_note.grid(row=6, column=0, columnspan=2, sticky="w", pady=(4, 0))
+
+        # Channel selection: a deselected channel is ignored when a new
+        # recording starts and is not recorded.
+        tk.Label(frame, text="Record channels", anchor="w").grid(
+            row=5, column=0, sticky="nw", padx=(0, 10), pady=3
+        )
+        channels_frame = tk.Frame(frame)
+        channels_frame.grid(row=5, column=1, sticky="w", pady=3)
+        self._channel_vars = {}
+        self._channel_checks = []
+        for key, title in _CHANNELS:
+            var = tk.BooleanVar(value=getattr(self._settings, key))
+            check = tk.Checkbutton(
+                channels_frame,
+                text=title,
+                variable=var,
+                anchor="w",
+                command=self._on_setting_change,
+            )
+            check.pack(anchor="w")
+            self._channel_vars[key] = var
+            self._channel_checks.append(check)
 
     def _folder_text(self) -> str:
         return self._settings.output_folder or _DEFAULT_FOLDER_TEXT
@@ -468,6 +497,8 @@ class MainWindow:
         state = tk.DISABLED if busy else tk.NORMAL
         self._browse_button.config(state=state)
         self._default_folder_button.config(state=state)
+        for check in self._channel_checks:
+            check.config(state=state)
 
     def _save_settings(self, settings: AppSettings) -> None:
         """Save the settings right away and report a failure under them."""
@@ -483,6 +514,15 @@ class MainWindow:
         self._settings_note.config(text="", fg="#6b7280")
 
     def _on_setting_change(self, _event: Optional[tk.Event] = None) -> None:
+        channels = {key: bool(var.get()) for key, var in self._channel_vars.items()}
+        if not any(channels.values()):
+            # At least one channel must stay selected, or nothing is recorded.
+            for key, var in self._channel_vars.items():
+                var.set(getattr(self._settings, key))
+            self._settings_note.config(
+                text="At least one channel must stay selected.", fg="#d97706"
+            )
+            return
         self._save_settings(
             AppSettings(
                 pip_width=self._size_values.get(
@@ -495,6 +535,10 @@ class MainWindow:
                 quality=self._quality_values.get(
                     self._quality_var.get(), self._settings.quality
                 ),
+                record_screen=channels["record_screen"],
+                record_system_audio=channels["record_system_audio"],
+                record_mic=channels["record_mic"],
+                record_camera=channels["record_camera"],
             )
         )
 
@@ -516,6 +560,10 @@ class MainWindow:
                 pip_position=self._settings.pip_position,
                 output_folder=chosen,
                 quality=self._settings.quality,
+                record_screen=self._settings.record_screen,
+                record_system_audio=self._settings.record_system_audio,
+                record_mic=self._settings.record_mic,
+                record_camera=self._settings.record_camera,
             )
         )
 
@@ -528,6 +576,10 @@ class MainWindow:
                 pip_position=self._settings.pip_position,
                 output_folder="",
                 quality=self._settings.quality,
+                record_screen=self._settings.record_screen,
+                record_system_audio=self._settings.record_system_audio,
+                record_mic=self._settings.record_mic,
+                record_camera=self._settings.record_camera,
             )
         )
 

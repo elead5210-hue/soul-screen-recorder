@@ -102,6 +102,29 @@ def _shift_filters(offset: float) -> "tuple[str, str]":
     return "", ""
 
 
+def _input_indexes(
+    include_screen: bool,
+    include_camera: bool,
+    include_mic: bool,
+    include_system: bool,
+) -> dict:
+    """Map stream name -> ffmpeg input number, counting only included streams.
+
+    The order is always screen, camera, mic, system. With every stream
+    included this is 0, 1, 2, 3.
+    """
+    indexes = {}
+    for name, wanted in (
+        ("screen", include_screen),
+        ("camera", include_camera),
+        ("mic", include_mic),
+        ("system", include_system),
+    ):
+        if wanted:
+            indexes[name] = len(indexes)
+    return indexes
+
+
 def build_filter_graph(
     pip_width: int,
     margin: int,
@@ -109,6 +132,10 @@ def build_filter_graph(
     pip_position: str = DEFAULT_PIP_POSITION,
     mic_offset: float = 0.0,
     system_offset: float = 0.0,
+    include_screen: bool = True,
+    include_camera: bool = True,
+    include_mic: bool = True,
+    include_system: bool = True,
 ) -> "tuple[str, List[str]]":
     """Return (filter_complex, audio_labels).
 
@@ -136,27 +163,52 @@ def build_filter_graph(
     pip_x = f"W-w-{gap}" if position.endswith("right") else str(gap)
     pip_y = f"H-h-{gap}" if position.startswith("bottom") else str(gap)
 
-    parts = [
-        f"[1:v]{video_shift}scale={width}:-2[pip]",
-        f"[0:v][pip]overlay={pip_x}:{pip_y},"
-        "format=yuv420p[v]",
-    ]
+    # Deselected streams are not inputs, so the remaining ones are numbered
+    # in order (screen, camera, mic, system).
+    index_of = _input_indexes(
+        include_screen, include_camera, include_mic, include_system
+    )
+    parts: List[str] = []
+    if include_screen and include_camera:
+        parts.append(
+            f"[{index_of['camera']}:v]{video_shift}scale={width}:-2[pip]"
+        )
+        parts.append(
+            f"[{index_of['screen']}:v][pip]overlay={pip_x}:{pip_y},"
+            "format=yuv420p[v]"
+        )
+    elif include_screen:
+        parts.append(
+            f"[{index_of['screen']}:v]"
+            "scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p[v]"
+        )
+    elif include_camera:
+        # No screen: the camera becomes the main video.
+        parts.append(
+            f"[{index_of['camera']}:v]{video_shift}"
+            "scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p[v]"
+        )
 
     # Each audio file is resampled to one shared rate with timestamp
     # correction (aresample async, first_pts=0) so both start aligned and
     # stay in sync over long recordings, then shifted by its own offset. The
     # two are kept as separate outputs: there is no amix.
-    for index, label, offset in (
-        (2, "mic", mic_offset),
-        (3, "sys", system_offset),
+    audio_labels: List[str] = []
+    for key, label, offset, wanted in (
+        ("mic", "mic", mic_offset, include_mic),
+        ("system", "sys", system_offset, include_system),
     ):
+        if not wanted:
+            continue
+        index = index_of[key]
         _, audio_shift = _shift_filters(offset)
         chain = f"[{index}:a]aresample={MIX_SAMPLE_RATE}:async=1:first_pts=0"
         if audio_shift:
             chain += f",{audio_shift}"
         parts.append(f"{chain}[{label}]")
+        audio_labels.append(f"[{label}]")
 
-    return ";".join(parts), ["[mic]", "[sys]"]
+    return ";".join(parts), audio_labels
 
 
 def build_composite_command(
@@ -173,6 +225,10 @@ def build_composite_command(
     quality: str = DEFAULT_QUALITY,
     mic_offset: float = 0.0,
     system_offset: float = 0.0,
+    include_screen: bool = True,
+    include_camera: bool = True,
+    include_mic: bool = True,
+    include_system: bool = True,
 ) -> List[str]:
     """Build the ffmpeg command that writes the PiP video to `output`.
 
@@ -186,27 +242,47 @@ def build_composite_command(
         pip_position,
         mic_offset,
         system_offset,
+        include_screen=include_screen,
+        include_camera=include_camera,
+        include_mic=include_mic,
+        include_system=include_system,
     )
-    cmd = [
-        ffmpeg, "-hide_banner", "-y", "-nostats", "-loglevel", "warning",
-        "-i", str(screen_path),
-        "-i", str(camera_path),
-        "-i", str(mic_path),
-        "-i", str(system_path),
-        "-filter_complex", graph,
-        "-map", "[v]",
-    ]
+    cmd = [ffmpeg, "-hide_banner", "-y", "-nostats", "-loglevel", "warning"]
+    # Only the selected streams are inputs, in the order screen, camera,
+    # mic, system (matching the numbering in the filter graph).
+    for wanted, path in (
+        (include_screen, screen_path),
+        (include_camera, camera_path),
+        (include_mic, mic_path),
+        (include_system, system_path),
+    ):
+        if wanted:
+            cmd += ["-i", str(path)]
+    has_video = include_screen or include_camera
+    cmd += ["-filter_complex", graph]
+    if has_video:
+        cmd += ["-map", "[v]"]
     for label in audio_labels:
         cmd += ["-map", label]
+    if audio_labels:
+        titles = []
+        if include_mic:
+            titles.append(MIC_TRACK_TITLE)
+        if include_system:
+            titles.append(SYSTEM_TRACK_TITLE)
+        cmd += ["-c:a", "aac", "-b:a", AUDIO_BITRATE]
+        for i, title in enumerate(titles):
+            cmd += [
+                f"-metadata:s:a:{i}", f"title={title}",
+                # The first track is the one a player starts with.
+                f"-disposition:a:{i}", "default" if i == 0 else "0",
+            ]
+    if has_video:
+        cmd += [
+            *video_encoder_args_for_quality(ffmpeg, quality, VIDEO_GOP),
+            "-pix_fmt", "yuv420p",
+        ]
     cmd += [
-        "-c:a", "aac", "-b:a", AUDIO_BITRATE,
-        "-metadata:s:a:0", f"title={MIC_TRACK_TITLE}",
-        "-metadata:s:a:1", f"title={SYSTEM_TRACK_TITLE}",
-        # The microphone is the track a player starts with.
-        "-disposition:a:0", "default",
-        "-disposition:a:1", "0",
-        *video_encoder_args_for_quality(ffmpeg, quality, VIDEO_GOP),
-        "-pix_fmt", "yuv420p",
         # Stop at the shortest stream so the audio never runs past the video.
         "-shortest",
         "-movflags", "+faststart",
@@ -229,6 +305,10 @@ def composite(
     quality: str = DEFAULT_QUALITY,
     mic_offset: float = 0.0,
     system_offset: float = 0.0,
+    include_screen: bool = True,
+    include_camera: bool = True,
+    include_mic: bool = True,
+    include_system: bool = True,
 ) -> Path:
     """Create final.mp4 from the four raw recordings and return its path.
 
@@ -244,12 +324,31 @@ def composite(
     system_path = Path(system_path)
     final_path = Path(final_path)
 
-    for path, label in (
-        (screen_path, "screen"),
-        (camera_path, "camera"),
-        (mic_path, "microphone"),
-        (system_path, "system audio"),
-    ):
+    if not (include_screen or include_camera or include_mic or include_system):
+        raise CompositeError(
+            "Cannot create the final video: every channel was deselected."
+        )
+
+    # Deselected channels were never recorded, so their files are not checked.
+    for path, label in [
+        item
+        for item in (
+            (screen_path, "screen", include_screen),
+            (camera_path, "camera", include_camera),
+            (mic_path, "microphone", include_mic),
+            (system_path, "system audio", include_system),
+        )
+        if item[2]
+    ] and [
+        (p, l)
+        for p, l, wanted in (
+            (screen_path, "screen", include_screen),
+            (camera_path, "camera", include_camera),
+            (mic_path, "microphone", include_mic),
+            (system_path, "system audio", include_system),
+        )
+        if wanted
+    ]:
         if not path.exists() or path.stat().st_size == 0:
             raise CompositeError(
                 f"Cannot create the final video: the {label} file is "
@@ -276,6 +375,10 @@ def composite(
         quality=quality,
         mic_offset=mic_offset,
         system_offset=system_offset,
+        include_screen=include_screen,
+        include_camera=include_camera,
+        include_mic=include_mic,
+        include_system=include_system,
     )
     temp_path = Path(cmd[-1])
 
